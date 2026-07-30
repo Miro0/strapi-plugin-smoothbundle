@@ -3408,8 +3408,15 @@ export default function App() {
         protected: protectedValue,
       });
       const nextJob = normalizeCdnConnectorSyncJob(response.data?.data?.job || {});
+      const nextMediaItems = Array.isArray(response.data?.data?.mediaItems)
+        ? response.data.data.mediaItems.map((item) => normalizeCdnConnectorMediaItem(item))
+        : null;
 
       setCdnConnectorSyncJob(nextJob);
+
+      if (nextMediaItems) {
+        setCdnConnectorMediaItems(nextMediaItems);
+      }
 
       if (nextJob.status === 'running') {
         startCdnSyncPolling();

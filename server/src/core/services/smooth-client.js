@@ -1738,6 +1738,71 @@ module.exports = ({ strapi }) => ({
     };
   },
 
+  async updateAssetsProtection(assetIds = [], protectedValue = false, moduleId = 'cdn-connector') {
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const settings = await settingsService.get();
+    const project = await settingsService.getProject(moduleId);
+
+    if (!settings.connected || !settings.accessToken || !project.projectId) {
+      return {
+        success: false,
+        message: 'Connect to Smooth Bundle and create a project first.',
+        updated: 0,
+      };
+    }
+
+    const normalizedAssetIds = Array.from(
+      new Set((Array.isArray(assetIds) ? assetIds : [assetIds]).map((assetId) => String(assetId || '').trim()).filter(Boolean))
+    );
+
+    if (normalizedAssetIds.length === 0) {
+      return {
+        success: false,
+        message: 'Asset ID is missing.',
+        updated: 0,
+      };
+    }
+
+    let updated = 0;
+    const responses = [];
+
+    for (let startIndex = 0; startIndex < normalizedAssetIds.length; startIndex += 50) {
+      const chunk = normalizedAssetIds.slice(startIndex, startIndex + 50);
+      const response = await this.requestJson(
+        'PATCH',
+        `/projects/${encodeURIComponent(project.projectId)}/assets/bulk`,
+        {
+          headers: {
+            Authorization: `Bearer ${settings.accessToken}`,
+          },
+          payload: {
+            asset_ids: chunk,
+            protected: Boolean(protectedValue),
+          },
+        }
+      );
+
+      if (!response.success) {
+        return {
+          success: false,
+          message: response.message || 'Could not update asset protection in Smooth Bundle.',
+          details: response.details || '',
+          updated,
+          data: responses,
+        };
+      }
+
+      updated += chunk.length;
+      responses.push(response.data || null);
+    }
+
+    return {
+      success: true,
+      updated,
+      data: responses,
+    };
+  },
+
   async deleteRouteAssets(routes = [], moduleId = '') {
     const repository = strapi.plugin('smoothbundle').service('api-accelerator-repository');
     const targets = [];
