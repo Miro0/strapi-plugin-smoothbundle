@@ -769,6 +769,16 @@ function paginateRows(rows = [], page = 1, pageSize = TABLE_PAGE_SIZE) {
   };
 }
 
+function filterStableSelection(current = [], allowedValues = new Set()) {
+  const next = current.filter((value) => allowedValues.has(value));
+
+  if (next.length === current.length && next.every((value, index) => value === current[index])) {
+    return current;
+  }
+
+  return next;
+}
+
 function matchesEndpointSearch(entry, searchTerm) {
   const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
   if (!normalizedSearch) {
@@ -1717,6 +1727,7 @@ function MediaTableCard({
   expandedItemIds,
   onToggleExpanded,
   isOffloadEnabled = false,
+  pendingProtectionAction = null,
   isBusy,
 }) {
   const hasSearchResults = filteredCount > 0;
@@ -1793,15 +1804,18 @@ function MediaTableCard({
                   const visibleVariantEntries = variantEntries.filter((entry) => entry.publicUrl);
                   const expanded = expandedItemIds.includes(item.fileId);
                   const itemErrorLines = normalizeErrorLines(item.lastError);
-                  const canSync = !isBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() !== 'uploaded';
-                  const canUnsync = !isBusy && Boolean(item.fileId) && Boolean(item.syncable);
-                  const canProtect = !isBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() === 'uploaded' && !item.protected;
-                  const canUnprotect = !isBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() === 'uploaded' && item.protected;
+                  const isProtectionPending =
+                    String(pendingProtectionAction?.fileId || '').trim() === String(item.fileId || '').trim();
+                  const isRowBusy = isBusy || isProtectionPending;
+                  const canSync = !isRowBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() !== 'uploaded';
+                  const canUnsync = !isRowBusy && Boolean(item.fileId) && Boolean(item.syncable);
+                  const canProtect = Boolean(item.fileId) && String(item.syncStatus || '').trim() === 'uploaded' && !item.protected;
+                  const canUnprotect = Boolean(item.fileId) && String(item.syncStatus || '').trim() === 'uploaded' && item.protected;
                   const originalOpenUrl = buildCdnConnectorAssetOpenUrl(item, originalEntry);
                   const canOpenOriginal = Boolean(originalOpenUrl);
                   const canCopyOriginal = Boolean(originalEntry?.publicUrl);
                   const visiblePublicVariantEntries = visibleVariantEntries;
-                  const canToggleExpanded = !isBusy && visiblePublicVariantEntries.length > 0;
+                  const canToggleExpanded = !isRowBusy && visiblePublicVariantEntries.length > 0;
 
                   return (
                     <Tr key={item.id || item.fileId}>
@@ -1868,8 +1882,9 @@ function MediaTableCard({
                               size="S"
                               variant="secondary"
                               onClick={() => onProtectOne(item.fileId)}
+                              disabled={isRowBusy}
                             >
-                              Protect
+                              {isProtectionPending && pendingProtectionAction?.protected ? 'Protecting...' : 'Protect'}
                             </Button>
                           ) : null}
                           {canUnprotect ? (
@@ -1877,8 +1892,9 @@ function MediaTableCard({
                               size="S"
                               variant="secondary"
                               onClick={() => onUnprotectOne(item.fileId)}
+                              disabled={isRowBusy}
                             >
-                              Unprotect
+                              {isProtectionPending && !pendingProtectionAction?.protected ? 'Unprotecting...' : 'Unprotect'}
                             </Button>
                           ) : null}
                           {canCopyOriginal ? (
@@ -2309,6 +2325,7 @@ function RestoreAssetsTableCard({ items, message = '', onRestore, isBusy }) {
 
 export default function App() {
   const client = useFetchClient();
+  const clientRef = React.useRef(client);
   const [isReady, setIsReady] = React.useState(false);
   const [activeViewId, setActiveViewId] = React.useState(() => getRequestedViewId());
   const [account, setAccount] = React.useState(defaultAccount());
@@ -2352,6 +2369,7 @@ export default function App() {
   const [cdnConnectorPage, setCdnConnectorPage] = React.useState(1);
   const [cdnConnectorAccessesPage, setCdnConnectorAccessesPage] = React.useState(1);
   const [cdnConnectorUnusedAssetsPage, setCdnConnectorUnusedAssetsPage] = React.useState(1);
+  const [pendingMediaProtectionAction, setPendingMediaProtectionAction] = React.useState(null);
   const [selectedSyncedRoutes, setSelectedSyncedRoutes] = React.useState([]);
   const [selectedOtherRoutes, setSelectedOtherRoutes] = React.useState([]);
   const [expandedSyncedVariantRoutes, setExpandedSyncedVariantRoutes] = React.useState([]);
@@ -2367,6 +2385,10 @@ export default function App() {
   const cdnSyncPollingTimerRef = React.useRef(null);
   const copiedKeyTimerRef = React.useRef(null);
 
+  React.useEffect(() => {
+    clientRef.current = client;
+  }, [client]);
+
   const isBusy = Boolean(busyAction);
   const isInteractionBusy = isBusy;
   const apiAcceleratorModule = modules.find((module) => module.id === 'api-accelerator') || null;
@@ -2379,30 +2401,88 @@ export default function App() {
   const isCdnSyncRunning = cdnConnectorSyncJob.status === 'running';
   const isApiAcceleratorBusy = isInteractionBusy || isApiSyncRunning;
   const isCdnConnectorBusy = isInteractionBusy || isCdnSyncRunning;
-  const allSyncedEndpoints = buildEndpointDisplayRows(apiAcceleratorEndpoints, '', true);
-  const allOtherEndpoints = buildEndpointDisplayRows(apiAcceleratorEndpoints, '', false);
-  const allApiAcceleratorAccesses = buildAccessDisplayRows(apiAcceleratorAccesses, '');
-  const effectiveApiAcceleratorGrantAccessAssetOptions = buildApiAcceleratorGrantAccessAssetOptions(apiAcceleratorEndpoints);
-  const allCdnConnectorItems = buildMediaDisplayRows(cdnConnectorMediaItems, '');
-  const hasSyncedCdnConnectorItems = allCdnConnectorItems.some((item) => item.syncable);
-  const allCdnConnectorAccesses = buildAccessDisplayRows(cdnConnectorAccesses, '');
-  const allCdnConnectorUnusedAssets = buildUnusedAssetDisplayRows(cdnConnectorUnusedAssets, '', 'all');
-  const syncedEndpoints = buildEndpointDisplayRows(apiAcceleratorEndpoints, syncedEndpointSearch, true);
-  const otherEndpoints = buildEndpointDisplayRows(apiAcceleratorEndpoints, otherEndpointSearch, false);
-  const apiAcceleratorAccessRows = buildAccessDisplayRows(apiAcceleratorAccesses, apiAcceleratorAccessesSearch);
-  const cdnConnectorItems = buildMediaDisplayRows(cdnConnectorMediaItems, cdnConnectorSearch);
-  const cdnConnectorAccessRows = buildAccessDisplayRows(cdnConnectorAccesses, cdnConnectorAccessesSearch);
-  const cdnConnectorUnusedAssetRows = buildUnusedAssetDisplayRows(
-    cdnConnectorUnusedAssets,
-    cdnConnectorUnusedAssetsSearch,
-    cdnConnectorUnusedAssetsFilter
+  const allSyncedEndpoints = React.useMemo(
+    () => buildEndpointDisplayRows(apiAcceleratorEndpoints, '', true),
+    [apiAcceleratorEndpoints]
   );
-  const syncedEndpointPageData = paginateRows(syncedEndpoints, syncedEndpointPage);
-  const otherEndpointPageData = paginateRows(otherEndpoints, otherEndpointPage);
-  const apiAcceleratorAccessesPageData = paginateRows(apiAcceleratorAccessRows, apiAcceleratorAccessesPage);
-  const cdnConnectorPageData = paginateRows(cdnConnectorItems, cdnConnectorPage);
-  const cdnConnectorAccessesPageData = paginateRows(cdnConnectorAccessRows, cdnConnectorAccessesPage);
-  const cdnConnectorUnusedAssetsPageData = paginateRows(cdnConnectorUnusedAssetRows, cdnConnectorUnusedAssetsPage);
+  const allOtherEndpoints = React.useMemo(
+    () => buildEndpointDisplayRows(apiAcceleratorEndpoints, '', false),
+    [apiAcceleratorEndpoints]
+  );
+  const allApiAcceleratorAccesses = React.useMemo(
+    () => buildAccessDisplayRows(apiAcceleratorAccesses, ''),
+    [apiAcceleratorAccesses]
+  );
+  const effectiveApiAcceleratorGrantAccessAssetOptions = React.useMemo(
+    () => buildApiAcceleratorGrantAccessAssetOptions(apiAcceleratorEndpoints),
+    [apiAcceleratorEndpoints]
+  );
+  const allCdnConnectorItems = React.useMemo(
+    () => buildMediaDisplayRows(cdnConnectorMediaItems, ''),
+    [cdnConnectorMediaItems]
+  );
+  const hasSyncedCdnConnectorItems = allCdnConnectorItems.some((item) => item.syncable);
+  const allCdnConnectorAccesses = React.useMemo(
+    () => buildAccessDisplayRows(cdnConnectorAccesses, ''),
+    [cdnConnectorAccesses]
+  );
+  const allCdnConnectorUnusedAssets = React.useMemo(
+    () => buildUnusedAssetDisplayRows(cdnConnectorUnusedAssets, '', 'all'),
+    [cdnConnectorUnusedAssets]
+  );
+  const syncedEndpoints = React.useMemo(
+    () => buildEndpointDisplayRows(apiAcceleratorEndpoints, syncedEndpointSearch, true),
+    [apiAcceleratorEndpoints, syncedEndpointSearch]
+  );
+  const otherEndpoints = React.useMemo(
+    () => buildEndpointDisplayRows(apiAcceleratorEndpoints, otherEndpointSearch, false),
+    [apiAcceleratorEndpoints, otherEndpointSearch]
+  );
+  const apiAcceleratorAccessRows = React.useMemo(
+    () => buildAccessDisplayRows(apiAcceleratorAccesses, apiAcceleratorAccessesSearch),
+    [apiAcceleratorAccesses, apiAcceleratorAccessesSearch]
+  );
+  const cdnConnectorItems = React.useMemo(
+    () => buildMediaDisplayRows(cdnConnectorMediaItems, cdnConnectorSearch),
+    [cdnConnectorMediaItems, cdnConnectorSearch]
+  );
+  const cdnConnectorAccessRows = React.useMemo(
+    () => buildAccessDisplayRows(cdnConnectorAccesses, cdnConnectorAccessesSearch),
+    [cdnConnectorAccesses, cdnConnectorAccessesSearch]
+  );
+  const cdnConnectorUnusedAssetRows = React.useMemo(
+    () =>
+      buildUnusedAssetDisplayRows(
+        cdnConnectorUnusedAssets,
+        cdnConnectorUnusedAssetsSearch,
+        cdnConnectorUnusedAssetsFilter
+      ),
+    [cdnConnectorUnusedAssets, cdnConnectorUnusedAssetsFilter, cdnConnectorUnusedAssetsSearch]
+  );
+  const syncedEndpointPageData = React.useMemo(
+    () => paginateRows(syncedEndpoints, syncedEndpointPage),
+    [syncedEndpointPage, syncedEndpoints]
+  );
+  const otherEndpointPageData = React.useMemo(
+    () => paginateRows(otherEndpoints, otherEndpointPage),
+    [otherEndpointPage, otherEndpoints]
+  );
+  const apiAcceleratorAccessesPageData = React.useMemo(
+    () => paginateRows(apiAcceleratorAccessRows, apiAcceleratorAccessesPage),
+    [apiAcceleratorAccessRows, apiAcceleratorAccessesPage]
+  );
+  const cdnConnectorPageData = React.useMemo(
+    () => paginateRows(cdnConnectorItems, cdnConnectorPage),
+    [cdnConnectorItems, cdnConnectorPage]
+  );
+  const cdnConnectorAccessesPageData = React.useMemo(
+    () => paginateRows(cdnConnectorAccessRows, cdnConnectorAccessesPage),
+    [cdnConnectorAccessRows, cdnConnectorAccessesPage]
+  );
+  const cdnConnectorUnusedAssetsPageData = React.useMemo(
+    () => paginateRows(cdnConnectorUnusedAssetRows, cdnConnectorUnusedAssetsPage),
+    [cdnConnectorUnusedAssetRows, cdnConnectorUnusedAssetsPage]
+  );
   const apiSyncProgress =
     apiAcceleratorSyncJob.totalRoutes > 0
       ? Math.round((apiAcceleratorSyncJob.processedRoutes / apiAcceleratorSyncJob.totalRoutes) * 100)
@@ -2532,7 +2612,7 @@ export default function App() {
     setBusyAction('Loading');
 
     try {
-      const response = await client.get(`/${pluginId}/bootstrap`);
+      const response = await clientRef.current.get(`/${pluginId}/bootstrap`);
       hydrate(response.data?.data || {});
     } catch (error) {
       setMessage({
@@ -2543,7 +2623,7 @@ export default function App() {
       setBusyAction('');
       setIsReady(true);
     }
-  }, [client, hydrate]);
+  }, [hydrate]);
 
   React.useEffect(() => {
     load();
@@ -2592,9 +2672,9 @@ export default function App() {
   }, [account.connected, activeViewId, cdnConnectorSettings.deleteCdnAssetsWithMediaItems, isReady, modules]);
 
   const refresh = React.useCallback(async () => {
-    const response = await client.get(`/${pluginId}/bootstrap`);
+    const response = await clientRef.current.get(`/${pluginId}/bootstrap`);
     hydrate(response.data?.data || {});
-  }, [client, hydrate]);
+  }, [hydrate]);
 
   const runAction = React.useCallback(
     async (label, callback, successMessage) => {
@@ -2635,7 +2715,7 @@ export default function App() {
       }
 
       try {
-        const response = await client.post(`/${pluginId}/core/status-sync`, {});
+        const response = await clientRef.current.post(`/${pluginId}/core/status-sync`, {});
 
         if (response.data?.data?.account) {
           const nextAccount = response.data.data.account;
@@ -2659,7 +2739,7 @@ export default function App() {
         return null;
       }
     },
-    [account.connected, client]
+    [account.connected]
   );
 
   const stopApiSyncPolling = React.useCallback(() => {
@@ -2672,7 +2752,7 @@ export default function App() {
   const pollApiSyncStatus = React.useCallback(
     async (silent = false) => {
       try {
-        const response = await client.get(`/${pluginId}/modules/api-accelerator/sync/status`);
+        const response = await clientRef.current.get(`/${pluginId}/modules/api-accelerator/sync/status`);
         const nextJob = normalizeApiAcceleratorSyncJob(response.data?.data?.job || {});
 
         setApiAcceleratorSyncJob(nextJob);
@@ -2717,7 +2797,7 @@ export default function App() {
         return null;
       }
     },
-    [client, refresh, stopApiSyncPolling]
+    [refresh, stopApiSyncPolling]
   );
 
   const startApiSyncPolling = React.useCallback(() => {
@@ -2762,7 +2842,7 @@ export default function App() {
   const pollCdnSyncStatus = React.useCallback(
     async (silent = false) => {
       try {
-        const response = await client.get(`/${pluginId}/modules/cdn-connector/sync/status`);
+        const response = await clientRef.current.get(`/${pluginId}/modules/cdn-connector/sync/status`);
         const nextJob = normalizeCdnConnectorSyncJob(response.data?.data?.job || {});
 
         setCdnConnectorSyncJob(nextJob);
@@ -2808,7 +2888,7 @@ export default function App() {
         return null;
       }
     },
-    [client, refresh, stopCdnSyncPolling]
+    [refresh, stopCdnSyncPolling]
   );
 
   const startCdnSyncPolling = React.useCallback(() => {
@@ -2894,10 +2974,10 @@ export default function App() {
         .filter(Boolean)
     );
 
-    setSelectedSyncedRoutes((current) => current.filter((route) => syncableRoutes.has(route)));
-    setSelectedOtherRoutes((current) => current.filter((route) => nonSyncableRoutes.has(route)));
-    setExpandedSyncedVariantRoutes((current) => current.filter((route) => syncableRoutes.has(route)));
-    setExpandedSyncedFileRoutes((current) => current.filter((route) => syncableRoutes.has(route)));
+    setSelectedSyncedRoutes((current) => filterStableSelection(current, syncableRoutes));
+    setSelectedOtherRoutes((current) => filterStableSelection(current, nonSyncableRoutes));
+    setExpandedSyncedVariantRoutes((current) => filterStableSelection(current, syncableRoutes));
+    setExpandedSyncedFileRoutes((current) => filterStableSelection(current, syncableRoutes));
   }, [otherEndpoints, syncedEndpoints]);
 
   React.useEffect(() => {
@@ -2907,7 +2987,7 @@ export default function App() {
         .filter(Boolean)
     );
 
-    setExpandedCdnConnectorItemIds((current) => current.filter((fileId) => availableItemIds.has(fileId)));
+    setExpandedCdnConnectorItemIds((current) => filterStableSelection(current, availableItemIds));
   }, [cdnConnectorMediaItems]);
 
   function updateApiAcceleratorField(key, value) {
@@ -3344,6 +3424,10 @@ export default function App() {
     }
 
     setMessage(null);
+    setPendingMediaProtectionAction({
+      fileId: String(fileId || '').trim(),
+      protected: protectedValue,
+    });
 
     try {
       const response = await client.post(`/${pluginId}/modules/cdn-connector/sync`, {
@@ -3437,6 +3521,8 @@ export default function App() {
           protectedValue ? 'Could not protect the media item.' : 'Could not unprotect the media item.'
         ),
       });
+    } finally {
+      setPendingMediaProtectionAction(null);
     }
   }
 
@@ -4580,6 +4666,7 @@ export default function App() {
               expandedItemIds={expandedCdnConnectorItemIds}
               onToggleExpanded={toggleExpandedCdnConnectorItem}
               isOffloadEnabled={Boolean(cdnConnectorSettings.offloadLocalFiles)}
+              pendingProtectionAction={pendingMediaProtectionAction}
               isBusy={isCdnConnectorBusy}
             />
             <AccessesTableCard
