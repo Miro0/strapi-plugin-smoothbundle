@@ -321,6 +321,12 @@ function openExternalUrl(url) {
   }
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 function normalizeCdnConnectorAccess(item = {}) {
   return {
     id: String(item.id || item.accessId || item.access_id || item.uuid || '').trim(),
@@ -338,6 +344,24 @@ function normalizeCdnConnectorAccess(item = {}) {
       : [],
     assetsLabel: String(item.assetsLabel || item.assets_label || '').trim(),
     expiresAt: String(item.expiresAt || item.expires_at || item.expiration || item.expireAt || item.expire_at || '').trim(),
+    updatedAt: String(item.updatedAt || item.updated_at || '').trim(),
+    createdAt: String(item.createdAt || item.created_at || '').trim(),
+  };
+}
+
+function normalizeCdnConnectorCollaborator(item = {}) {
+  const canManageProtected = Boolean(
+    item.canManageProtected || item.canReadProtected || item.can_manage_protected || item.can_read_protected
+  );
+
+  return {
+    id: String(item.id || item.collaboratorId || item.collaborator_id || item.uuid || '').trim(),
+    email: String(item.email || item.userEmail || item.user_email || item?.user?.email || '').trim() || 'Unknown email',
+    canEditProject: Boolean(item.canEditProject || item.can_edit_project),
+    canCreateVersions: Boolean(item.canCreateVersions || item.can_create_versions),
+    canPublishVersions: Boolean(item.canPublishVersions || item.can_publish_versions),
+    canManageProtected,
+    canReadProtected: Boolean(item.canReadProtected || item.can_read_protected || canManageProtected),
     updatedAt: String(item.updatedAt || item.updated_at || '').trim(),
     createdAt: String(item.createdAt || item.created_at || '').trim(),
   };
@@ -703,6 +727,41 @@ function buildAccessDisplayRows(items = [], searchTerm = '') {
       item?.assetsLabel,
       ...(Array.isArray(item?.assets) ? item.assets : []),
       item?.expiresAt,
+      item?.updatedAt,
+      item?.createdAt,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedSearch);
+  });
+}
+
+function formatCollaboratorPermissions(item = {}) {
+  const permissions = [];
+
+  if (item.canEditProject) {
+    permissions.push('Can edit project data');
+  }
+
+  if (item.canManageProtected || item.canReadProtected) {
+    permissions.push('Can manage protected files');
+  }
+
+  return permissions.length > 0 ? permissions.join(', ') : 'No extra permissions';
+}
+
+function buildCollaboratorDisplayRows(items = [], searchTerm = '') {
+  const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
+
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return [
+      item?.email,
+      formatCollaboratorPermissions(item),
       item?.updatedAt,
       item?.createdAt,
     ]
@@ -1806,6 +1865,7 @@ function MediaTableCard({
                   const itemErrorLines = normalizeErrorLines(item.lastError);
                   const isProtectionPending =
                     String(pendingProtectionAction?.fileId || '').trim() === String(item.fileId || '').trim();
+                  const pendingProtectionLabel = pendingProtectionAction?.protected ? 'Protecting...' : 'Unprotecting...';
                   const isRowBusy = isBusy || isProtectionPending;
                   const canSync = !isRowBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() !== 'uploaded';
                   const canUnsync = !isRowBusy && Boolean(item.fileId) && Boolean(item.syncable);
@@ -1877,26 +1937,38 @@ function MediaTableCard({
                               Unsync
                             </Button>
                           ) : null}
-                          {canProtect ? (
+                          {isProtectionPending ? (
                             <Button
                               size="S"
                               variant="secondary"
-                              onClick={() => onProtectOne(item.fileId)}
-                              disabled={isRowBusy}
+                              disabled
                             >
-                              {isProtectionPending && pendingProtectionAction?.protected ? 'Protecting...' : 'Protect'}
+                              {pendingProtectionLabel}
                             </Button>
-                          ) : null}
-                          {canUnprotect ? (
-                            <Button
-                              size="S"
-                              variant="secondary"
-                              onClick={() => onUnprotectOne(item.fileId)}
-                              disabled={isRowBusy}
-                            >
-                              {isProtectionPending && !pendingProtectionAction?.protected ? 'Unprotecting...' : 'Unprotect'}
-                            </Button>
-                          ) : null}
+                          ) : (
+                            <>
+                              {canProtect ? (
+                                <Button
+                                  size="S"
+                                  variant="secondary"
+                                  onClick={() => onProtectOne(item.fileId)}
+                                  disabled={isRowBusy}
+                                >
+                                  Protect
+                                </Button>
+                              ) : null}
+                              {canUnprotect ? (
+                                <Button
+                                  size="S"
+                                  variant="secondary"
+                                  onClick={() => onUnprotectOne(item.fileId)}
+                                  disabled={isRowBusy}
+                                >
+                                  Unprotect
+                                </Button>
+                              ) : null}
+                            </>
+                          )}
                           {canCopyOriginal ? (
                             <Flex gap={1} justifyContent="flex-end" wrap="nowrap">
                               {canOpenOriginal ? (
@@ -2179,6 +2251,174 @@ function AccessesTableCard({
   );
 }
 
+function CollaboratorsTableCard({
+  totalCount,
+  filteredCount,
+  items,
+  searchValue,
+  onSearchChange,
+  currentPage,
+  totalPages,
+  startIndex,
+  endIndex,
+  onPageChange,
+  isFormOpen,
+  form,
+  editingCollaboratorId,
+  onOpenCreate,
+  onEditOne,
+  onCancel,
+  onFormChange,
+  onSubmit,
+  onRemoveOne,
+  isBusy,
+  message = '',
+}) {
+  const hasSearchResults = filteredCount > 0;
+  const hasAnyItems = totalCount > 0;
+  const isEditing = Boolean(editingCollaboratorId);
+
+  return (
+    <SectionCard
+      title="Collaborators"
+      subtitle="Project collaborators allowed to manage this Smooth Bundle CDN project."
+      actions={
+        <Button onClick={isFormOpen ? onCancel : onOpenCreate} disabled={isBusy}>
+          {isFormOpen ? 'Hide form' : 'Add collaborator'}
+        </Button>
+      }
+    >
+      <Flex direction="column" gap={4} alignItems="stretch">
+        {isFormOpen ? (
+          <Box background="neutral100" hasRadius padding={5}>
+            <Flex direction="column" gap={4} alignItems="stretch">
+              <TextField
+                label="Email"
+                name="collaborator-email"
+                type="email"
+                value={form.email}
+                disabled={isBusy || isEditing}
+                onChange={(event) => onFormChange({ email: event.target.value })}
+              />
+              <Field.Root hint="Protected file management also grants read access to protected files.">
+                <Field.Label>Permissions</Field.Label>
+                <CheckboxList>
+                  <CheckboxListItem>
+                    <input
+                      type="checkbox"
+                      checked={form.canEditProject}
+                      disabled={isBusy}
+                      onChange={(event) => onFormChange({ canEditProject: event.target.checked })}
+                    />
+                    <Typography variant="pi" textColor="neutral800">
+                      Can edit project data
+                    </Typography>
+                  </CheckboxListItem>
+                  <CheckboxListItem>
+                    <input
+                      type="checkbox"
+                      checked={form.canManageProtected}
+                      disabled={isBusy}
+                      onChange={(event) => onFormChange({ canManageProtected: event.target.checked })}
+                    />
+                    <Typography variant="pi" textColor="neutral800">
+                      Can manage protected files
+                    </Typography>
+                  </CheckboxListItem>
+                </CheckboxList>
+                <Field.Hint />
+              </Field.Root>
+              <Flex justifyContent="flex-end" gap={2}>
+                <Button variant="secondary" onClick={onCancel} disabled={isBusy}>
+                  Cancel
+                </Button>
+                <Button onClick={onSubmit} disabled={isBusy || (!isEditing && !String(form.email || '').trim())}>
+                  {isEditing ? 'Save permissions' : 'Add collaborator'}
+                </Button>
+              </Flex>
+            </Flex>
+          </Box>
+        ) : null}
+
+        <Box minWidth="280px" width="100%" style={{ maxWidth: '420px' }}>
+          <TextField
+            label="Search collaborators"
+            placeholder="Search by email or permission"
+            name="collaborators-search"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
+        </Box>
+
+        {message ? (
+          <Typography variant="pi" textColor="danger600">
+            {message}
+          </Typography>
+        ) : null}
+
+        {!hasSearchResults ? (
+          <Typography variant="pi" textColor="neutral600">
+            {hasAnyItems ? 'No collaborators match this search.' : 'No collaborators found.'}
+          </Typography>
+        ) : (
+          <>
+            <Table colCount={5} rowCount={items.length + 1}>
+              <Thead>
+                <Tr>
+                  <Th><Typography variant="sigma" textColor="neutral600">Email</Typography></Th>
+                  <Th><Typography variant="sigma" textColor="neutral600">Permissions</Typography></Th>
+                  <Th><Typography variant="sigma" textColor="neutral600">Updated</Typography></Th>
+                  <Th><Typography variant="sigma" textColor="neutral600">Created</Typography></Th>
+                  <Th><Typography variant="sigma" textColor="neutral600">Actions</Typography></Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {items.map((item) => (
+                  <Tr key={item.id || item.email}>
+                    <Td><Typography textColor="neutral800">{item.email}</Typography></Td>
+                    <Td><Typography textColor="neutral800">{formatCollaboratorPermissions(item)}</Typography></Td>
+                    <Td><Typography textColor="neutral800">{formatOptionalDateTime(item.updatedAt)}</Typography></Td>
+                    <Td><Typography textColor="neutral800">{formatOptionalDateTime(item.createdAt)}</Typography></Td>
+                    <Td>
+                      <Flex justifyContent="flex-end" gap={2} wrap="wrap">
+                        <Button
+                          size="S"
+                          variant="secondary"
+                          onClick={() => onEditOne(item)}
+                          disabled={isBusy || !item.id}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="S"
+                          variant="danger-light"
+                          onClick={() => onRemoveOne(item.id)}
+                          disabled={isBusy || !item.id}
+                        >
+                          Remove
+                        </Button>
+                      </Flex>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+            <TablePagination
+              itemLabel="collaborators"
+              totalItems={filteredCount}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              onPageChange={onPageChange}
+            />
+          </>
+        )}
+      </Flex>
+    </SectionCard>
+  );
+}
+
 function UnusedAssetsTableCard({
   totalCount,
   filteredCount,
@@ -2338,6 +2578,7 @@ export default function App() {
   const [cdnConnectorSettings, setCdnConnectorSettings] = React.useState(defaultCdnConnectorSettings());
   const [cdnConnectorMediaItems, setCdnConnectorMediaItems] = React.useState([]);
   const [cdnConnectorAccesses, setCdnConnectorAccesses] = React.useState([]);
+  const [cdnConnectorCollaborators, setCdnConnectorCollaborators] = React.useState([]);
   const [cdnConnectorUnusedAssets, setCdnConnectorUnusedAssets] = React.useState([]);
   const [cdnConnectorRestorableAssets, setCdnConnectorRestorableAssets] = React.useState([]);
   const [cdnConnectorGrantAccessAssetOptions, setCdnConnectorGrantAccessAssetOptions] = React.useState([]);
@@ -2345,6 +2586,7 @@ export default function App() {
   const [cdnConnectorSearch, setCdnConnectorSearch] = React.useState('');
   const [apiAcceleratorAccessesSearch, setApiAcceleratorAccessesSearch] = React.useState('');
   const [cdnConnectorAccessesSearch, setCdnConnectorAccessesSearch] = React.useState('');
+  const [cdnConnectorCollaboratorsSearch, setCdnConnectorCollaboratorsSearch] = React.useState('');
   const [cdnConnectorUnusedAssetsSearch, setCdnConnectorUnusedAssetsSearch] = React.useState('');
   const [cdnConnectorUnusedAssetsFilter, setCdnConnectorUnusedAssetsFilter] = React.useState('all');
   const [isApiAcceleratorGrantAccessFormOpen, setIsApiAcceleratorGrantAccessFormOpen] = React.useState(false);
@@ -2355,8 +2597,16 @@ export default function App() {
   const [grantAccessEmail, setGrantAccessEmail] = React.useState('');
   const [grantAccessAssets, setGrantAccessAssets] = React.useState([]);
   const [grantAccessExpiresAt, setGrantAccessExpiresAt] = React.useState('');
+  const [isCollaboratorFormOpen, setIsCollaboratorFormOpen] = React.useState(false);
+  const [editingCollaboratorId, setEditingCollaboratorId] = React.useState('');
+  const [collaboratorForm, setCollaboratorForm] = React.useState({
+    email: '',
+    canEditProject: false,
+    canManageProtected: false,
+  });
   const [apiAcceleratorAccessesMessage, setApiAcceleratorAccessesMessage] = React.useState('');
   const [cdnConnectorAccessesMessage, setCdnConnectorAccessesMessage] = React.useState('');
+  const [cdnConnectorCollaboratorsMessage, setCdnConnectorCollaboratorsMessage] = React.useState('');
   const [cdnConnectorUnusedAssetsMessage, setCdnConnectorUnusedAssetsMessage] = React.useState('');
   const [cdnConnectorUnusedAssetsRetentionLabel, setCdnConnectorUnusedAssetsRetentionLabel] = React.useState('');
   const [cdnConnectorRestorableAssetsMessage, setCdnConnectorRestorableAssetsMessage] = React.useState('');
@@ -2368,6 +2618,7 @@ export default function App() {
   const [apiAcceleratorAccessesPage, setApiAcceleratorAccessesPage] = React.useState(1);
   const [cdnConnectorPage, setCdnConnectorPage] = React.useState(1);
   const [cdnConnectorAccessesPage, setCdnConnectorAccessesPage] = React.useState(1);
+  const [cdnConnectorCollaboratorsPage, setCdnConnectorCollaboratorsPage] = React.useState(1);
   const [cdnConnectorUnusedAssetsPage, setCdnConnectorUnusedAssetsPage] = React.useState(1);
   const [pendingMediaProtectionAction, setPendingMediaProtectionAction] = React.useState(null);
   const [selectedSyncedRoutes, setSelectedSyncedRoutes] = React.useState([]);
@@ -2426,6 +2677,10 @@ export default function App() {
     () => buildAccessDisplayRows(cdnConnectorAccesses, ''),
     [cdnConnectorAccesses]
   );
+  const allCdnConnectorCollaborators = React.useMemo(
+    () => buildCollaboratorDisplayRows(cdnConnectorCollaborators, ''),
+    [cdnConnectorCollaborators]
+  );
   const allCdnConnectorUnusedAssets = React.useMemo(
     () => buildUnusedAssetDisplayRows(cdnConnectorUnusedAssets, '', 'all'),
     [cdnConnectorUnusedAssets]
@@ -2449,6 +2704,10 @@ export default function App() {
   const cdnConnectorAccessRows = React.useMemo(
     () => buildAccessDisplayRows(cdnConnectorAccesses, cdnConnectorAccessesSearch),
     [cdnConnectorAccesses, cdnConnectorAccessesSearch]
+  );
+  const cdnConnectorCollaboratorRows = React.useMemo(
+    () => buildCollaboratorDisplayRows(cdnConnectorCollaborators, cdnConnectorCollaboratorsSearch),
+    [cdnConnectorCollaborators, cdnConnectorCollaboratorsSearch]
   );
   const cdnConnectorUnusedAssetRows = React.useMemo(
     () =>
@@ -2478,6 +2737,10 @@ export default function App() {
   const cdnConnectorAccessesPageData = React.useMemo(
     () => paginateRows(cdnConnectorAccessRows, cdnConnectorAccessesPage),
     [cdnConnectorAccessRows, cdnConnectorAccessesPage]
+  );
+  const cdnConnectorCollaboratorsPageData = React.useMemo(
+    () => paginateRows(cdnConnectorCollaboratorRows, cdnConnectorCollaboratorsPage),
+    [cdnConnectorCollaboratorRows, cdnConnectorCollaboratorsPage]
   );
   const cdnConnectorUnusedAssetsPageData = React.useMemo(
     () => paginateRows(cdnConnectorUnusedAssetRows, cdnConnectorUnusedAssetsPage),
@@ -2522,6 +2785,12 @@ export default function App() {
       setCdnConnectorAccessesPage(cdnConnectorAccessesPageData.currentPage);
     }
   }, [cdnConnectorAccessesPage, cdnConnectorAccessesPageData.currentPage]);
+
+  React.useEffect(() => {
+    if (cdnConnectorCollaboratorsPage !== cdnConnectorCollaboratorsPageData.currentPage) {
+      setCdnConnectorCollaboratorsPage(cdnConnectorCollaboratorsPageData.currentPage);
+    }
+  }, [cdnConnectorCollaboratorsPage, cdnConnectorCollaboratorsPageData.currentPage]);
 
   React.useEffect(() => {
     if (cdnConnectorUnusedAssetsPage !== cdnConnectorUnusedAssetsPageData.currentPage) {
@@ -2588,6 +2857,11 @@ export default function App() {
         ? payload.cdnConnector.accesses.map((item) => normalizeCdnConnectorAccess(item))
         : []
     );
+    setCdnConnectorCollaborators(
+      Array.isArray(payload?.cdnConnector?.collaborators)
+        ? payload.cdnConnector.collaborators.map((item) => normalizeCdnConnectorCollaborator(item))
+        : []
+    );
     setCdnConnectorUnusedAssets(
       Array.isArray(payload?.cdnConnector?.unusedAssets)
         ? payload.cdnConnector.unusedAssets.map((item) => normalizeCdnConnectorUnusedAsset(item))
@@ -2599,6 +2873,7 @@ export default function App() {
         : []
     );
     setCdnConnectorAccessesMessage(String(payload?.cdnConnector?.accessesMessage || '').trim());
+    setCdnConnectorCollaboratorsMessage(String(payload?.cdnConnector?.collaboratorsMessage || '').trim());
     setCdnConnectorUnusedAssetsMessage(String(payload?.cdnConnector?.unusedAssetsMessage || '').trim());
     setCdnConnectorUnusedAssetsRetentionLabel(String(payload?.cdnConnector?.unusedAssetsRetentionLabel || '').trim());
     setCdnConnectorRestorableAssets(
@@ -3113,7 +3388,15 @@ export default function App() {
         setApiAcceleratorAccessesPage(1);
         setCdnConnectorPage(1);
         setCdnConnectorAccessesPage(1);
+        setCdnConnectorCollaboratorsPage(1);
         setCdnConnectorUnusedAssetsPage(1);
+        setIsCollaboratorFormOpen(false);
+        setEditingCollaboratorId('');
+        setCollaboratorForm({
+          email: '',
+          canEditProject: false,
+          canManageProtected: false,
+        });
         hydrate(response.data?.data || {});
         return response.data?.data || null;
       },
@@ -3484,11 +3767,37 @@ export default function App() {
       return;
     }
 
+    const normalizedFileId = String(fileId || '').trim();
+
+    if (!normalizedFileId) {
+      return;
+    }
+
+    const previousMediaItem = cdnConnectorMediaItems.find(
+      (item) => String(item.fileId || '').trim() === normalizedFileId
+    );
+    const pendingStartedAt = Date.now();
+    const minimumPendingMs = 500;
+
     setMessage(null);
+    setPendingMediaProtectionAction({
+      fileId: normalizedFileId,
+      protected: protectedValue,
+    });
+    setCdnConnectorMediaItems((items) =>
+      items.map((item) =>
+        String(item.fileId || '').trim() === normalizedFileId
+          ? {
+              ...item,
+              protected: Boolean(protectedValue),
+            }
+          : item
+      )
+    );
 
     try {
       const response = await client.post(`/${pluginId}/modules/cdn-connector/protection`, {
-        fileId,
+        fileId: normalizedFileId,
         protected: protectedValue,
       });
       const nextJob = normalizeCdnConnectorSyncJob(response.data?.data?.job || {});
@@ -3514,6 +3823,19 @@ export default function App() {
         return;
       }
 
+      if (previousMediaItem) {
+        setCdnConnectorMediaItems((items) =>
+          items.map((item) =>
+            String(item.fileId || '').trim() === normalizedFileId
+              ? {
+                  ...item,
+                  protected: Boolean(previousMediaItem.protected),
+                }
+              : item
+          )
+        );
+      }
+
       setMessage({
         type: 'danger',
         text: extractErrorMessage(
@@ -3522,6 +3844,12 @@ export default function App() {
         ),
       });
     } finally {
+      const remainingPendingMs = minimumPendingMs - (Date.now() - pendingStartedAt);
+
+      if (remainingPendingMs > 0) {
+        await wait(remainingPendingMs);
+      }
+
       setPendingMediaProtectionAction(null);
     }
   }
@@ -3554,6 +3882,7 @@ export default function App() {
         await client.post(`/${pluginId}/modules/cdn-connector/accesses/revoke`, {
           accessId: normalizedAccessId,
         });
+        await load();
       },
       'Project access revoked.'
     );
@@ -3616,8 +3945,102 @@ export default function App() {
         setGrantAccessAssets([]);
         setGrantAccessExpiresAt('');
         setIsGrantAccessFormOpen(false);
+        await load();
       },
       'Access granted.'
+    );
+  }
+
+  function openCreateCollaboratorForm() {
+    setEditingCollaboratorId('');
+    setCollaboratorForm({
+      email: '',
+      canEditProject: false,
+      canManageProtected: false,
+    });
+    setIsCollaboratorFormOpen(true);
+  }
+
+  function editCollaborator(collaborator) {
+    setEditingCollaboratorId(String(collaborator?.id || '').trim());
+    setCollaboratorForm({
+      email: String(collaborator?.email || '').trim(),
+      canEditProject: Boolean(collaborator?.canEditProject),
+      canManageProtected: Boolean(collaborator?.canManageProtected || collaborator?.canReadProtected),
+    });
+    setIsCollaboratorFormOpen(true);
+  }
+
+  function cancelCollaboratorForm() {
+    setIsCollaboratorFormOpen(false);
+    setEditingCollaboratorId('');
+    setCollaboratorForm({
+      email: '',
+      canEditProject: false,
+      canManageProtected: false,
+    });
+  }
+
+  function updateCollaboratorForm(patch) {
+    setCollaboratorForm((current) => ({
+      ...current,
+      ...(patch || {}),
+    }));
+  }
+
+  async function submitCollaborator() {
+    const email = String(collaboratorForm.email || '').trim();
+
+    if (!editingCollaboratorId && !email) {
+      setMessage({
+        type: 'danger',
+        text: 'Enter a valid collaborator email address.',
+      });
+      return;
+    }
+
+    await runAction(
+      editingCollaboratorId ? 'Saving collaborator permissions' : 'Adding collaborator',
+      async () => {
+        await client.post(`/${pluginId}/modules/cdn-connector/collaborators/save`, {
+          collaboratorId: editingCollaboratorId,
+          email,
+          canEditProject: Boolean(collaboratorForm.canEditProject),
+          canManageProtected: Boolean(collaboratorForm.canManageProtected),
+        });
+        cancelCollaboratorForm();
+        await load();
+      },
+      editingCollaboratorId ? 'Collaborator permissions saved.' : 'Collaborator added.'
+    );
+  }
+
+  async function removeCollaborator(collaboratorId) {
+    const normalizedCollaboratorId = String(collaboratorId || '').trim();
+
+    if (!normalizedCollaboratorId) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Remove this collaborator?');
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    await runAction(
+      'Removing collaborator',
+      async () => {
+        await client.post(`/${pluginId}/modules/cdn-connector/collaborators/remove`, {
+          collaboratorId: normalizedCollaboratorId,
+        });
+        if (editingCollaboratorId === normalizedCollaboratorId) {
+          cancelCollaboratorForm();
+        }
+        await load();
+      },
+      'Collaborator removed.'
     );
   }
 
@@ -4696,6 +5119,32 @@ export default function App() {
               onRevokeOne={revokeProjectAccess}
               isBusy={isInteractionBusy}
               message={cdnConnectorAccessesMessage}
+            />
+            <CollaboratorsTableCard
+              totalCount={allCdnConnectorCollaborators.length}
+              filteredCount={cdnConnectorCollaboratorRows.length}
+              items={cdnConnectorCollaboratorsPageData.rows}
+              searchValue={cdnConnectorCollaboratorsSearch}
+              onSearchChange={(value) => {
+                setCdnConnectorCollaboratorsSearch(value);
+                setCdnConnectorCollaboratorsPage(1);
+              }}
+              currentPage={cdnConnectorCollaboratorsPageData.currentPage}
+              totalPages={cdnConnectorCollaboratorsPageData.totalPages}
+              startIndex={cdnConnectorCollaboratorsPageData.startIndex}
+              endIndex={cdnConnectorCollaboratorsPageData.endIndex}
+              onPageChange={setCdnConnectorCollaboratorsPage}
+              isFormOpen={isCollaboratorFormOpen}
+              form={collaboratorForm}
+              editingCollaboratorId={editingCollaboratorId}
+              onOpenCreate={openCreateCollaboratorForm}
+              onEditOne={editCollaborator}
+              onCancel={cancelCollaboratorForm}
+              onFormChange={updateCollaboratorForm}
+              onSubmit={submitCollaborator}
+              onRemoveOne={removeCollaborator}
+              isBusy={isInteractionBusy}
+              message={cdnConnectorCollaboratorsMessage}
             />
           </Flex>
         ) : null}

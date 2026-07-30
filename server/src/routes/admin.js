@@ -221,6 +221,22 @@ module.exports = [
     },
   },
   {
+    method: 'POST',
+    path: '/modules/cdn-connector/collaborators/save',
+    handler: 'cdnConnector.saveCollaborator',
+    config: {
+      policies: [],
+    },
+  },
+  {
+    method: 'POST',
+    path: '/modules/cdn-connector/collaborators/remove',
+    handler: 'cdnConnector.removeCollaborator',
+    config: {
+      policies: [],
+    },
+  },
+  {
     method: 'GET',
     path: '/modules/cdn-connector/sync/status',
     handler: 'cdnConnector.syncStatus',

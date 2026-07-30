@@ -517,6 +517,81 @@ module.exports = ({ strapi }) => ({
     };
   },
 
+  async saveCollaborator(ctx) {
+    if (!(await ensureEnabled(strapi, ctx))) {
+      return;
+    }
+
+    const email = String(ctx.request.body?.email || '').trim();
+    const collaboratorId = String(ctx.request.body?.collaboratorId || '').trim();
+    const permissions = {
+      canEditProject: Boolean(ctx.request.body?.canEditProject),
+      canCreateVersions: false,
+      canPublishVersions: false,
+      canManageProtected: Boolean(ctx.request.body?.canManageProtected),
+      canReadProtected: Boolean(ctx.request.body?.canManageProtected || ctx.request.body?.canReadProtected),
+    };
+
+    if (!collaboratorId && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+      ctx.status = 400;
+      ctx.body = {
+        error: {
+          message: 'Enter a valid collaborator email address.',
+        },
+      };
+      return;
+    }
+
+    const result = await plugin(strapi)
+      .service('smooth-client')
+      .saveProjectCollaborator(email, permissions, collaboratorId, 'cdn-connector');
+
+    if (!result.success) {
+      const details = String(result.details || '').trim();
+      ctx.status = 400;
+      ctx.body = {
+        error: {
+          message: details ? `${result.message || 'Could not save collaborator.'} | ${details}` : result.message || 'Could not save collaborator.',
+        },
+      };
+      return;
+    }
+
+    ctx.body = {
+      data: {
+        result,
+      },
+    };
+  },
+
+  async removeCollaborator(ctx) {
+    if (!(await ensureEnabled(strapi, ctx))) {
+      return;
+    }
+
+    const collaboratorId = String(ctx.request.body?.collaboratorId || '').trim();
+    const result = await plugin(strapi).service('smooth-client').removeProjectCollaborator(collaboratorId, 'cdn-connector');
+
+    if (!result.success) {
+      const details = String(result.details || '').trim();
+      ctx.status = 400;
+      ctx.body = {
+        error: {
+          message: details
+            ? `${result.message || 'Could not remove collaborator.'} | ${details}`
+            : result.message || 'Could not remove collaborator.',
+        },
+      };
+      return;
+    }
+
+    ctx.body = {
+      data: {
+        result,
+      },
+    };
+  },
+
   async syncStatus(ctx) {
     if (!(await ensureEnabled(strapi, ctx))) {
       return;

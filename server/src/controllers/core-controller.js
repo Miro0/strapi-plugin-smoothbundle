@@ -88,7 +88,15 @@ function extractListRows(payload) {
     return [];
   }
 
-  const buckets = [payload.data, payload.rows, payload.accesses, payload.assets, payload.usage, payload.results];
+  const buckets = [
+    payload.data,
+    payload.rows,
+    payload.accesses,
+    payload.collaborators,
+    payload.assets,
+    payload.usage,
+    payload.results,
+  ];
 
   for (const bucket of buckets) {
     if (Array.isArray(bucket)) {
@@ -158,6 +166,26 @@ function normalizeAccessRow(item = {}) {
 
 function buildAccessRows(response = {}) {
   return extractListRows(response.data).map((item) => normalizeAccessRow(item));
+}
+
+function normalizeCollaboratorRow(item = {}) {
+  return {
+    id: String(item.id || item.collaboratorId || item.collaborator_id || item.uuid || '').trim(),
+    email: String(item.email || item.userEmail || item.user_email || item?.user?.email || '').trim() || 'Unknown email',
+    canEditProject: Boolean(item.canEditProject || item.can_edit_project),
+    canCreateVersions: Boolean(item.canCreateVersions || item.can_create_versions),
+    canPublishVersions: Boolean(item.canPublishVersions || item.can_publish_versions),
+    canManageProtected: Boolean(
+      item.canManageProtected || item.canReadProtected || item.can_manage_protected || item.can_read_protected
+    ),
+    canReadProtected: Boolean(item.canReadProtected || item.can_read_protected),
+    updatedAt: String(item.updatedAt || item.updated_at || '').trim(),
+    createdAt: String(item.createdAt || item.created_at || '').trim(),
+  };
+}
+
+function buildCollaboratorRows(response = {}) {
+  return extractListRows(response.data).map((item) => normalizeCollaboratorRow(item));
 }
 
 function buildUsageByAssetMap(response = {}) {
@@ -527,6 +555,7 @@ module.exports = ({ strapi }) => ({
     const cdnConnectorRepositoryEntries = await plugin(strapi).service('cdn-connector-repository').all();
     const apiAcceleratorAccessesResponse = await plugin(strapi).service('smooth-client').getProjectAccesses('api-accelerator');
     const accessesResponse = await plugin(strapi).service('smooth-client').getProjectAccesses('cdn-connector');
+    const collaboratorsResponse = await plugin(strapi).service('smooth-client').getProjectCollaborators('cdn-connector');
     const dailyAssetUsageResponse = await plugin(strapi).service('smooth-client').getDailyAssetUsage('cdn-connector');
     const cdnProject = buildModuleProject(coreSettings, 'cdn-connector');
 
@@ -551,6 +580,8 @@ module.exports = ({ strapi }) => ({
           mediaItems: cdnConnectorMediaItems,
           accesses: buildAccessRows(accessesResponse),
           accessesMessage: accessesResponse.success ? '' : String(accessesResponse.message || '').trim(),
+          collaborators: buildCollaboratorRows(collaboratorsResponse),
+          collaboratorsMessage: collaboratorsResponse.success ? '' : String(collaboratorsResponse.message || '').trim(),
           unusedAssets: buildUnusedAssetRows(
             cdnConnectorRepositoryEntries,
             cdnConnectorMediaItems,
@@ -680,6 +711,8 @@ module.exports = ({ strapi }) => ({
           mediaItems: [],
           accesses: [],
           accessesMessage: '',
+          collaborators: [],
+          collaboratorsMessage: '',
           unusedAssets: [],
           unusedAssetsMessage: '',
           unusedAssetsRetentionLabel: getUnusedAssetsRetentionLabel(nextSettings.userPlan),

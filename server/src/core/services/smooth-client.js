@@ -368,6 +368,7 @@ function extractCollectionRows(payload = {}) {
     payload?.data,
     payload?.rows,
     payload?.accesses,
+    payload?.collaborators,
     payload?.assets,
     payload?.usage,
     payload?.results,
@@ -1412,6 +1413,166 @@ module.exports = ({ strapi }) => ({
       return {
         success: false,
         message: response.message || 'Could not revoke project access.',
+      };
+    }
+
+    return {
+      success: true,
+      data: response.data,
+    };
+  },
+
+  async getProjectCollaborators(moduleId = 'cdn-connector') {
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const settings = await settingsService.get();
+    const project = await settingsService.getProject(moduleId);
+
+    if (!settings.connected || !settings.accessToken) {
+      return {
+        success: false,
+        message: 'Connect to Smooth Bundle first.',
+        data: [],
+      };
+    }
+
+    if (!project.projectId) {
+      return {
+        success: false,
+        message: 'Create the module project first.',
+        data: [],
+      };
+    }
+
+    const response = await this.requestJson('GET', `/projects/${encodeURIComponent(project.projectId)}/collaborators`, {
+      headers: {
+        Authorization: `Bearer ${settings.accessToken}`,
+      },
+    });
+
+    if (!response.success) {
+      return {
+        success: false,
+        message: response.message || 'Could not fetch project collaborators from Smooth Bundle.',
+        data: extractCollectionRows(response.data),
+      };
+    }
+
+    return {
+      success: true,
+      data: extractCollectionRows(response.data),
+    };
+  },
+
+  async saveProjectCollaborator(email, permissions = {}, collaboratorId = '', moduleId = 'cdn-connector') {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedCollaboratorId = String(collaboratorId || '').trim();
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const settings = await settingsService.get();
+    const project = await settingsService.getProject(moduleId);
+
+    if (!normalizedCollaboratorId && !normalizedEmail) {
+      return {
+        success: false,
+        message: 'Email is required.',
+      };
+    }
+
+    if (!settings.connected || !settings.accessToken) {
+      return {
+        success: false,
+        message: 'Connect to Smooth Bundle first.',
+      };
+    }
+
+    if (!project.projectId) {
+      return {
+        success: false,
+        message: 'Create the module project first.',
+      };
+    }
+
+    const protectedAccess = Boolean(permissions.canManageProtected || permissions.canReadProtected);
+    const payload = {
+      canEditProject: Boolean(permissions.canEditProject),
+      canCreateVersions: false,
+      canPublishVersions: false,
+      canManageProtected: protectedAccess,
+      canReadProtected: protectedAccess,
+    };
+    const method = normalizedCollaboratorId ? 'PATCH' : 'POST';
+    const path = normalizedCollaboratorId
+      ? `/projects/${encodeURIComponent(project.projectId)}/collaborators/${encodeURIComponent(normalizedCollaboratorId)}`
+      : `/projects/${encodeURIComponent(project.projectId)}/collaborators`;
+
+    if (!normalizedCollaboratorId) {
+      payload.email = normalizedEmail;
+    }
+
+    const response = await this.requestJson(method, path, {
+      headers: {
+        Authorization: `Bearer ${settings.accessToken}`,
+      },
+      payload,
+    });
+
+    if (!response.success) {
+      return {
+        success: false,
+        message: response.message || 'Could not save collaborator.',
+        details: response.details || '',
+        data: response.data,
+      };
+    }
+
+    return {
+      success: true,
+      data: response.data,
+    };
+  },
+
+  async removeProjectCollaborator(collaboratorId, moduleId = 'cdn-connector') {
+    const normalizedCollaboratorId = String(collaboratorId || '').trim();
+
+    if (!normalizedCollaboratorId) {
+      return {
+        success: false,
+        message: 'Collaborator ID is missing.',
+      };
+    }
+
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const settings = await settingsService.get();
+    const project = await settingsService.getProject(moduleId);
+
+    if (!settings.connected || !settings.accessToken) {
+      return {
+        success: false,
+        message: 'Connect to Smooth Bundle first.',
+      };
+    }
+
+    if (!project.projectId) {
+      return {
+        success: false,
+        message: 'Create the module project first.',
+      };
+    }
+
+    const response = await this.requestJson(
+      'DELETE',
+      `/projects/${encodeURIComponent(project.projectId)}/collaborators/${encodeURIComponent(normalizedCollaboratorId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${settings.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.success) {
+      return {
+        success: false,
+        message: response.message || 'Could not remove collaborator.',
+        details: response.details || '',
       };
     }
 
