@@ -86,6 +86,27 @@ function findSyncedEntryByKey(entry = {}, key = '') {
   return findOriginalSyncedEntry(entry);
 }
 
+function collectSyncedAssetIds(entry = {}) {
+  const syncedEntries = Array.isArray(entry?.syncedEntries) ? entry.syncedEntries : [];
+
+  return Array.from(
+    new Set(
+      syncedEntries
+        .map((item) => String(item?.projectAssetId || item?.assetId || item?.asset_id || '').trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function canUseDirectProtectionUpdate(entry = {}) {
+  const syncedEntries = Array.isArray(entry?.syncedEntries)
+    ? entry.syncedEntries.filter((item) => String(item?.filename || '').trim())
+    : [];
+  const assetIds = collectSyncedAssetIds(entry);
+
+  return syncedEntries.length > 0 && assetIds.length === syncedEntries.length;
+}
+
 function buildGrantAccessAssetOptions(mediaItems = []) {
   const options = new Set();
 
@@ -336,19 +357,61 @@ module.exports = ({ strapi }) => ({
       return;
     }
 
-    const entries = await repository.setProtectedMany(normalizedFileIds, protectedValue);
+    const storedEntries = await repository.all();
+    const directUpdateEntries = storedEntries.filter((entry) => normalizedFileIds.includes(entry.fileId));
+    const directUpdateAssetIds = directUpdateEntries.flatMap(collectSyncedAssetIds);
+    const canDirectlyUpdateProtection =
+      normalizedFileIds.length > 0 &&
+      directUpdateEntries.length === normalizedFileIds.length &&
+      directUpdateEntries.every((entry) => String(entry.syncStatus || '').trim() === 'uploaded') &&
+      directUpdateEntries.every(canUseDirectProtectionUpdate) &&
+      directUpdateAssetIds.length > 0;
 
-    if (entries.length === 0) {
-      ctx.status = 404;
+    if (canDirectlyUpdateProtection) {
+      const updateResult = await plugin(strapi)
+        .service('smooth-client')
+        .updateAssetsProtection(directUpdateAssetIds, protectedValue, 'cdn-connector');
+
+      if (!updateResult.success) {
+        ctx.status = 400;
+        ctx.body = {
+          error: {
+            message: updateResult.message || 'Could not update protected delivery for this asset.',
+          },
+          data: {
+            result: updateResult,
+            job: null,
+            mediaItems: await plugin(strapi).service('cdn-connector-sync').listMediaItems(),
+          },
+        };
+        return;
+      }
+
+      await repository.upsertMany(
+        directUpdateEntries.map((entry) => ({
+          fileId: entry.fileId,
+          syncable: true,
+          protected: protectedValue,
+          syncStatus: 'uploaded',
+          lastError: '',
+        }))
+      );
+      plugin(strapi).service('cdn-connector-offload').invalidateCache();
+
       ctx.body = {
-        error: {
-          message: 'Media item not found.',
+        data: {
+          result: {
+            success: true,
+            direct: true,
+            updated: updateResult.updated || directUpdateAssetIds.length,
+          },
+          job: null,
+          mediaItems: await plugin(strapi).service('cdn-connector-sync').listMediaItems(),
         },
       };
+      ctx.status = 200;
       return;
     }
-
-    plugin(strapi).service('cdn-connector-offload').invalidateCache();
 
     const result = await plugin(strapi).service('cdn-connector-sync').startSyncJob(normalizedFileIds, {
       trigger: protectedValue ? 'protect' : 'unprotect',
