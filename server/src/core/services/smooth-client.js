@@ -1491,13 +1491,9 @@ module.exports = ({ strapi }) => ({
       };
     }
 
-    const protectedAccess = Boolean(permissions.canManageProtected || permissions.canReadProtected);
     const payload = {
-      canEditProject: Boolean(permissions.canEditProject),
-      canCreateVersions: false,
-      canPublishVersions: false,
-      canManageProtected: protectedAccess,
-      canReadProtected: protectedAccess,
+      canManageAllFiles: Boolean(permissions.canManageAllFiles || permissions.canEditProject),
+      canManageProtected: Boolean(permissions.canManageProtected || permissions.canReadProtected),
     };
     const method = normalizedCollaboratorId ? 'PATCH' : 'POST';
     const path = normalizedCollaboratorId

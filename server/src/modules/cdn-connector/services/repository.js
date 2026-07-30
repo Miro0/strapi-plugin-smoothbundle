@@ -157,4 +157,49 @@ module.exports = ({ strapi }) => ({
     await this.save(next);
     return next;
   },
+
+  async setProtectedMany(fileIds = [], protectedValue) {
+    const normalizedFileIds = Array.from(
+      new Set(
+        (Array.isArray(fileIds) ? fileIds : [fileIds])
+          .map((fileId) => String(fileId || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (normalizedFileIds.length === 0) {
+      return [];
+    }
+
+    const items = await this.all();
+    const index = new Map(items.map((item, itemIndex) => [item.fileId, itemIndex]));
+    const updatedEntries = [];
+
+    for (const fileId of normalizedFileIds) {
+      const itemIndex = index.get(fileId);
+
+      if (typeof itemIndex !== 'number') {
+        continue;
+      }
+
+      const current = items[itemIndex];
+      const next = this.normalizeEntry(
+        {
+          ...current,
+          protected: protectedValue,
+          lastError: '',
+        },
+        current
+      );
+
+      items[itemIndex] = next;
+      updatedEntries.push(next);
+    }
+
+    if (updatedEntries.length > 0) {
+      await this.save(items);
+    }
+
+    return updatedEntries;
+  },
 });

@@ -86,27 +86,6 @@ function findSyncedEntryByKey(entry = {}, key = '') {
   return findOriginalSyncedEntry(entry);
 }
 
-function collectSyncedAssetIds(entry = {}) {
-  const syncedEntries = Array.isArray(entry?.syncedEntries) ? entry.syncedEntries : [];
-
-  return Array.from(
-    new Set(
-      syncedEntries
-        .map((item) => String(item?.projectAssetId || item?.assetId || item?.asset_id || '').trim())
-        .filter(Boolean)
-    )
-  );
-}
-
-function canUseDirectProtectionUpdate(entry = {}) {
-  const syncedEntries = Array.isArray(entry?.syncedEntries)
-    ? entry.syncedEntries.filter((item) => String(item?.filename || '').trim())
-    : [];
-  const assetIds = collectSyncedAssetIds(entry);
-
-  return syncedEntries.length > 0 && assetIds.length === syncedEntries.length;
-}
-
 function buildGrantAccessAssetOptions(mediaItems = []) {
   const options = new Set();
 
@@ -292,6 +271,7 @@ module.exports = ({ strapi }) => ({
 
     ctx.body = {
       data: {
+        entries,
         result,
         job: result.job || null,
         mediaItems: await plugin(strapi).service('cdn-connector-sync').listMediaItems(),
@@ -345,63 +325,32 @@ module.exports = ({ strapi }) => ({
     const protectedValue = Boolean(ctx.request.body?.protected);
     const normalizedFileIds = Array.from(new Set(fileIds.map((fileId) => String(fileId || '').trim()).filter(Boolean)));
     const repository = plugin(strapi).service('cdn-connector-repository');
-    const storedEntries = await repository.all();
-    const directUpdateEntries = storedEntries.filter((entry) => normalizedFileIds.includes(entry.fileId));
-    const directUpdateAssetIds = directUpdateEntries.flatMap(collectSyncedAssetIds);
-    const canDirectlyUpdateProtection =
-      normalizedFileIds.length > 0 &&
-      directUpdateEntries.length === normalizedFileIds.length &&
-      directUpdateEntries.every((entry) => String(entry.syncStatus || '').trim() === 'uploaded') &&
-      directUpdateEntries.every(canUseDirectProtectionUpdate) &&
-      directUpdateAssetIds.length > 0;
 
-    if (canDirectlyUpdateProtection) {
-      const updateResult = await plugin(strapi)
-        .service('smooth-client')
-        .updateAssetsProtection(directUpdateAssetIds, protectedValue, 'cdn-connector');
-
-      if (!updateResult.success) {
-        ctx.status = 400;
-        ctx.body = {
-          error: {
-            message: updateResult.message || 'Could not update protected delivery for this asset.',
-          },
-          data: {
-            result: updateResult,
-            job: null,
-            mediaItems: await plugin(strapi).service('cdn-connector-sync').listMediaItems(),
-          },
-        };
-        return;
-      }
-
-      await repository.upsertMany(
-        directUpdateEntries.map((entry) => ({
-          fileId: entry.fileId,
-          syncable: true,
-          protected: protectedValue,
-          syncStatus: 'uploaded',
-          lastError: '',
-        }))
-      );
-      plugin(strapi).service('cdn-connector-offload').invalidateCache();
-
+    if (normalizedFileIds.length === 0) {
+      ctx.status = 400;
       ctx.body = {
-        data: {
-          result: {
-            success: true,
-            direct: true,
-            updated: updateResult.updated || directUpdateAssetIds.length,
-          },
-          job: null,
-          mediaItems: await plugin(strapi).service('cdn-connector-sync').listMediaItems(),
+        error: {
+          message: 'Provide at least one media item.',
         },
       };
-      ctx.status = 200;
       return;
     }
 
-    const result = await plugin(strapi).service('cdn-connector-sync').startSyncJob(fileIds, {
+    const entries = await repository.setProtectedMany(normalizedFileIds, protectedValue);
+
+    if (entries.length === 0) {
+      ctx.status = 404;
+      ctx.body = {
+        error: {
+          message: 'Media item not found.',
+        },
+      };
+      return;
+    }
+
+    plugin(strapi).service('cdn-connector-offload').invalidateCache();
+
+    const result = await plugin(strapi).service('cdn-connector-sync').startSyncJob(normalizedFileIds, {
       trigger: protectedValue ? 'protect' : 'unprotect',
       force: true,
       markSyncable: true,
@@ -525,11 +474,8 @@ module.exports = ({ strapi }) => ({
     const email = String(ctx.request.body?.email || '').trim();
     const collaboratorId = String(ctx.request.body?.collaboratorId || '').trim();
     const permissions = {
-      canEditProject: Boolean(ctx.request.body?.canEditProject),
-      canCreateVersions: false,
-      canPublishVersions: false,
+      canManageAllFiles: Boolean(ctx.request.body?.canManageAllFiles || ctx.request.body?.canEditProject),
       canManageProtected: Boolean(ctx.request.body?.canManageProtected),
-      canReadProtected: Boolean(ctx.request.body?.canManageProtected || ctx.request.body?.canReadProtected),
     };
 
     if (!collaboratorId && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {

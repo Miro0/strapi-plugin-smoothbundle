@@ -321,12 +321,6 @@ function openExternalUrl(url) {
   }
 }
 
-function wait(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
 function normalizeCdnConnectorAccess(item = {}) {
   return {
     id: String(item.id || item.accessId || item.access_id || item.uuid || '').trim(),
@@ -357,7 +351,9 @@ function normalizeCdnConnectorCollaborator(item = {}) {
   return {
     id: String(item.id || item.collaboratorId || item.collaborator_id || item.uuid || '').trim(),
     email: String(item.email || item.userEmail || item.user_email || item?.user?.email || '').trim() || 'Unknown email',
-    canEditProject: Boolean(item.canEditProject || item.can_edit_project),
+    canManageAllFiles: Boolean(
+      item.canManageAllFiles || item.can_manage_all_files || item.canEditProject || item.can_edit_project
+    ),
     canCreateVersions: Boolean(item.canCreateVersions || item.can_create_versions),
     canPublishVersions: Boolean(item.canPublishVersions || item.can_publish_versions),
     canManageProtected,
@@ -740,8 +736,8 @@ function buildAccessDisplayRows(items = [], searchTerm = '') {
 function formatCollaboratorPermissions(item = {}) {
   const permissions = [];
 
-  if (item.canEditProject) {
-    permissions.push('Can edit project data');
+  if (item.canManageAllFiles) {
+    permissions.push('Can manage all files');
   }
 
   if (item.canManageProtected || item.canReadProtected) {
@@ -1246,6 +1242,32 @@ const AlertLink = styled(BaseLink)`
 const StyledAlert = styled(Alert)`
   button {
     cursor: pointer;
+  }
+`;
+
+const ToastViewport = styled.div`
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 10000;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+
+  ${({ theme }) => theme.breakpoints.small} {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
+`;
+
+const ToastItem = styled.div`
+  pointer-events: auto;
+  box-shadow: ${({ theme }) => theme.shadows.filterShadow};
+  border-radius: 4px;
+
+  ${StyledAlert} {
+    margin: 0;
   }
 `;
 
@@ -2306,12 +2328,12 @@ function CollaboratorsTableCard({
                   <CheckboxListItem>
                     <input
                       type="checkbox"
-                      checked={form.canEditProject}
+                      checked={form.canManageAllFiles}
                       disabled={isBusy}
-                      onChange={(event) => onFormChange({ canEditProject: event.target.checked })}
+                      onChange={(event) => onFormChange({ canManageAllFiles: event.target.checked })}
                     />
                     <Typography variant="pi" textColor="neutral800">
-                      Can edit project data
+                      Can manage all files
                     </Typography>
                   </CheckboxListItem>
                   <CheckboxListItem>
@@ -2601,7 +2623,7 @@ export default function App() {
   const [editingCollaboratorId, setEditingCollaboratorId] = React.useState('');
   const [collaboratorForm, setCollaboratorForm] = React.useState({
     email: '',
-    canEditProject: false,
+    canManageAllFiles: false,
     canManageProtected: false,
   });
   const [apiAcceleratorAccessesMessage, setApiAcceleratorAccessesMessage] = React.useState('');
@@ -2635,6 +2657,7 @@ export default function App() {
   const apiSyncPollingTimerRef = React.useRef(null);
   const cdnSyncPollingTimerRef = React.useRef(null);
   const copiedKeyTimerRef = React.useRef(null);
+  const messageTimerRef = React.useRef(null);
 
   React.useEffect(() => {
     clientRef.current = client;
@@ -3203,7 +3226,35 @@ export default function App() {
       window.clearTimeout(copiedKeyTimerRef.current);
       copiedKeyTimerRef.current = null;
     }
+
+    if (messageTimerRef.current && typeof window !== 'undefined') {
+      window.clearTimeout(messageTimerRef.current);
+      messageTimerRef.current = null;
+    }
   }, []);
+
+  React.useEffect(() => {
+    if (messageTimerRef.current && typeof window !== 'undefined') {
+      window.clearTimeout(messageTimerRef.current);
+      messageTimerRef.current = null;
+    }
+
+    if (!message || message.type === 'danger' || message.type === 'warning' || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    messageTimerRef.current = window.setTimeout(() => {
+      setMessage(null);
+      messageTimerRef.current = null;
+    }, 5000);
+
+    return () => {
+      if (messageTimerRef.current && typeof window !== 'undefined') {
+        window.clearTimeout(messageTimerRef.current);
+        messageTimerRef.current = null;
+      }
+    };
+  }, [message]);
 
   React.useEffect(() => {
     if (!account.connected) {
@@ -3394,7 +3445,7 @@ export default function App() {
         setEditingCollaboratorId('');
         setCollaboratorForm({
           email: '',
-          canEditProject: false,
+          canManageAllFiles: false,
           canManageProtected: false,
         });
         hydrate(response.data?.data || {});
@@ -3707,10 +3758,6 @@ export default function App() {
     }
 
     setMessage(null);
-    setPendingMediaProtectionAction({
-      fileId: String(fileId || '').trim(),
-      protected: protectedValue,
-    });
 
     try {
       const response = await client.post(`/${pluginId}/modules/cdn-connector/sync`, {
@@ -3773,27 +3820,11 @@ export default function App() {
       return;
     }
 
-    const previousMediaItem = cdnConnectorMediaItems.find(
-      (item) => String(item.fileId || '').trim() === normalizedFileId
-    );
-    const pendingStartedAt = Date.now();
-    const minimumPendingMs = 500;
-
     setMessage(null);
     setPendingMediaProtectionAction({
       fileId: normalizedFileId,
       protected: protectedValue,
     });
-    setCdnConnectorMediaItems((items) =>
-      items.map((item) =>
-        String(item.fileId || '').trim() === normalizedFileId
-          ? {
-              ...item,
-              protected: Boolean(protectedValue),
-            }
-          : item
-      )
-    );
 
     try {
       const response = await client.post(`/${pluginId}/modules/cdn-connector/protection`, {
@@ -3823,19 +3854,6 @@ export default function App() {
         return;
       }
 
-      if (previousMediaItem) {
-        setCdnConnectorMediaItems((items) =>
-          items.map((item) =>
-            String(item.fileId || '').trim() === normalizedFileId
-              ? {
-                  ...item,
-                  protected: Boolean(previousMediaItem.protected),
-                }
-              : item
-          )
-        );
-      }
-
       setMessage({
         type: 'danger',
         text: extractErrorMessage(
@@ -3844,12 +3862,6 @@ export default function App() {
         ),
       });
     } finally {
-      const remainingPendingMs = minimumPendingMs - (Date.now() - pendingStartedAt);
-
-      if (remainingPendingMs > 0) {
-        await wait(remainingPendingMs);
-      }
-
       setPendingMediaProtectionAction(null);
     }
   }
@@ -3955,7 +3967,7 @@ export default function App() {
     setEditingCollaboratorId('');
     setCollaboratorForm({
       email: '',
-      canEditProject: false,
+      canManageAllFiles: false,
       canManageProtected: false,
     });
     setIsCollaboratorFormOpen(true);
@@ -3965,7 +3977,7 @@ export default function App() {
     setEditingCollaboratorId(String(collaborator?.id || '').trim());
     setCollaboratorForm({
       email: String(collaborator?.email || '').trim(),
-      canEditProject: Boolean(collaborator?.canEditProject),
+      canManageAllFiles: Boolean(collaborator?.canManageAllFiles || collaborator?.canEditProject),
       canManageProtected: Boolean(collaborator?.canManageProtected || collaborator?.canReadProtected),
     });
     setIsCollaboratorFormOpen(true);
@@ -3976,7 +3988,7 @@ export default function App() {
     setEditingCollaboratorId('');
     setCollaboratorForm({
       email: '',
-      canEditProject: false,
+      canManageAllFiles: false,
       canManageProtected: false,
     });
   }
@@ -4005,7 +4017,7 @@ export default function App() {
         await client.post(`/${pluginId}/modules/cdn-connector/collaborators/save`, {
           collaboratorId: editingCollaboratorId,
           email,
-          canEditProject: Boolean(collaboratorForm.canEditProject),
+          canManageAllFiles: Boolean(collaboratorForm.canManageAllFiles),
           canManageProtected: Boolean(collaboratorForm.canManageProtected),
         });
         cancelCollaboratorForm();
@@ -5364,6 +5376,20 @@ export default function App() {
   return (
     <Page.Main aria-busy={isInteractionBusy || isApiSyncRunning || isCdnSyncRunning}>
       <Page.Title>Smooth Bundle</Page.Title>
+      {message ? (
+        <ToastViewport role="status" aria-live="polite">
+          <ToastItem>
+            <StyledAlert
+              title={messageTitle}
+              variant={messageVariant}
+              closeLabel="Close notification"
+              onClose={() => setMessage(null)}
+            >
+              {message.text}
+            </StyledAlert>
+          </ToastItem>
+        </ToastViewport>
+      ) : null}
       <Layouts.Root
         sideNav={
           <PluginSideNav
@@ -5407,17 +5433,6 @@ export default function App() {
                 ) : null}
               </SelectField>
             </Box>
-
-            {message ? (
-              <StyledAlert
-                title={messageTitle}
-                variant={messageVariant}
-                closeLabel="Close alert"
-                onClose={() => setMessage(null)}
-              >
-                {message.text}
-              </StyledAlert>
-            ) : null}
 
             {activeModule?.id === 'api-accelerator' && isApiSyncRunning ? (
               <Box

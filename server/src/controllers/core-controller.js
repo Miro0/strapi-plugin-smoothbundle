@@ -172,7 +172,9 @@ function normalizeCollaboratorRow(item = {}) {
   return {
     id: String(item.id || item.collaboratorId || item.collaborator_id || item.uuid || '').trim(),
     email: String(item.email || item.userEmail || item.user_email || item?.user?.email || '').trim() || 'Unknown email',
-    canEditProject: Boolean(item.canEditProject || item.can_edit_project),
+    canManageAllFiles: Boolean(
+      item.canManageAllFiles || item.can_manage_all_files || item.canEditProject || item.can_edit_project
+    ),
     canCreateVersions: Boolean(item.canCreateVersions || item.can_create_versions),
     canPublishVersions: Boolean(item.canPublishVersions || item.can_publish_versions),
     canManageProtected: Boolean(
