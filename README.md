@@ -26,7 +26,7 @@ Smooth Bundle for Strapi is a modular plugin that connects Strapi media and API 
 Install the plugin in your Strapi project:
 
 ```
-npm install strapi-plugin-smoothcdn
+npm install strapi-plugin-smoothbundle
 ```
 
 Enable the plugin in config/plugins.js:

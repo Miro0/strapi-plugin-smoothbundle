@@ -1,6 +1,6 @@
 {
   "name": "strapi-plugin-smoothbundle",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Boost Strapi performance by connecting media and API assets to Smooth Bundle with built-in optimization and scalable delivery pipelines.",
   "keywords": [
     "strapi",
@@ -13,7 +13,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Miro0/strapi-plugin-smoothcdn"
+    "url": "https://github.com/Miro0/strapi-plugin-smoothbundle"
   },
   "homepage": "https://smoothbundle.com",
   "main": "strapi-server.js",
