@@ -18,6 +18,12 @@ const {
   slugify,
 } = require('../../utils/helpers');
 
+const DEFAULT_STRAPI_IMAGE_BREAKPOINTS = {
+  large: 1000,
+  medium: 750,
+  small: 500,
+};
+
 function extractSlugCandidates(payload = {}) {
   return [
     payload.slug,
@@ -63,6 +69,28 @@ function normalizeCustomSubdomain(value) {
     .replace(/^\.+|\.+$/g, '');
 
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(hostCandidate) ? hostCandidate : '';
+}
+
+function getStrapiImageVariants(strapi) {
+  const configuredBreakpoints = strapi.config.get('plugin::upload.breakpoints', DEFAULT_STRAPI_IMAGE_BREAKPOINTS);
+  const source =
+    configuredBreakpoints && typeof configuredBreakpoints === 'object' && !Array.isArray(configuredBreakpoints)
+      ? configuredBreakpoints
+      : DEFAULT_STRAPI_IMAGE_BREAKPOINTS;
+  const variants = {};
+
+  for (const [name, value] of Object.entries(source)) {
+    const normalizedName = String(name || '').trim();
+    const width = Math.max(0, Number(value) || 0);
+
+    if (!normalizedName || width < 1) {
+      continue;
+    }
+
+    variants[normalizedName] = width;
+  }
+
+  return variants;
 }
 
 function extractCustomSubdomain(payload = {}) {
@@ -1106,6 +1134,11 @@ module.exports = ({ strapi }) => ({
         blockBots: false,
         blockHeadless: false,
         failIfExist: false,
+        ...(moduleId === 'cdn-connector'
+          ? {
+              imageVariants: getStrapiImageVariants(strapi),
+            }
+          : {}),
       },
     });
 
@@ -1518,6 +1551,7 @@ module.exports = ({ strapi }) => ({
         form.set('path', sample.path);
         form.set('protected', sample.protected ? '1' : '0');
         form.set('force', '0');
+        form.set('skipVariants', '1');
 
         for (const asset of chunk) {
           form.append(
