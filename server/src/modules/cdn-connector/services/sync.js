@@ -13,7 +13,7 @@ const { nowIso, parseIntervalFrequency } = require('../../../utils/helpers');
 const SYNC_LOCK_TTL_MS = 5 * 60 * 1000;
 
 function plugin(strapi) {
-  return strapi.plugin('smoothcdn');
+  return strapi.plugin('smoothbundle');
 }
 
 function normalizeMediaId(value) {
@@ -165,7 +165,7 @@ async function generateRestoredImageFormats(strapi, originalEntry = {}, publicPr
     return [];
   }
 
-  const tmpWorkingDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'smoothcdn-restore-'));
+  const tmpWorkingDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'smoothbundle-restore-'));
 
   try {
     const baseFile = {
@@ -319,7 +319,7 @@ function isPluginAssetPath(asset = {}) {
   const normalizedPath = getCdnAssetPath(asset).toLowerCase();
   const filename = getCdnAssetFilename(asset).toLowerCase();
 
-  return normalizedPath.includes('/smoothcdn') || filename.startsWith('smoothcdn-');
+  return normalizedPath.includes('/smoothbundle') || filename.startsWith('smoothbundle-');
 }
 
 function normalizeStrapiFolderPath(value = '/') {
@@ -593,6 +593,12 @@ function isSyncableEntry(entry = {}) {
   return Boolean(entry?.syncable);
 }
 
+function isExpectedOffloadedMissingSource(message = '') {
+  const normalized = String(message || '').trim().toLowerCase();
+
+  return normalized.includes('local asset file is missing');
+}
+
 module.exports = ({ strapi }) => {
   let schedulerHandle = null;
   let activeSyncPromise = null;
@@ -755,7 +761,7 @@ module.exports = ({ strapi }) => {
       }
 
       const signedFile = await signedFileService.signFileUrls(rawFile, {
-        __smoothcdnBypassRewrite: true,
+        __smoothbundleBypassRewrite: true,
       });
       const formats = signedFile?.formats && typeof signedFile.formats === 'object' ? signedFile.formats : {};
       const signatureFormats = rawFile?.formats && typeof rawFile.formats === 'object' ? rawFile.formats : formats;
@@ -1211,6 +1217,33 @@ module.exports = ({ strapi }) => {
       });
     };
 
+    const markSkippedUploadedItem = async (item, protectedValue) => {
+      skipped += 1;
+
+      await repository.upsert({
+        fileId: item.fileId,
+        syncable: true,
+        protected: Boolean(protectedValue),
+        syncStatus: 'uploaded',
+        lastError: '',
+      });
+      offloadService.invalidateCache();
+
+      await updateSyncJob(jobId, {
+        processedItems: synced + failed + skipped,
+        skippedItems: skipped,
+      });
+    };
+
+    const shouldSkipExpectedOffloadedMissingSource = (entry, failureMessage) => (
+      settings.offloadLocalFiles &&
+      entry?.current?.syncStatus === 'uploaded' &&
+      Boolean(entry?.persistedCurrent) &&
+      Boolean(entry?.current?.syncedEntries?.length) &&
+      Boolean(entry?.persistedCurrent?.protected) === Boolean(entry?.protected) &&
+      isExpectedOffloadedMissingSource(failureMessage)
+    );
+
     const markUploadedItem = async (batchEntry, upload) => {
       const uploadResults = upload && typeof upload.results === 'object' ? upload.results : {};
       const nextSyncedEntries = batchEntry.syncPlan.map((entry) => {
@@ -1264,7 +1297,7 @@ module.exports = ({ strapi }) => {
 
         if (!offloadResult.success) {
           strapi.log.warn(
-            `[smoothcdn] CDN Connector offload could not remove local files for media ${batchEntry.item.fileId}: ${
+            `[smoothbundle] CDN Connector offload could not remove local files for media ${batchEntry.item.fileId}: ${
               offloadResult.message || 'Unknown error.'
             }`
           );
@@ -1345,12 +1378,24 @@ module.exports = ({ strapi }) => {
         });
 
         if (variantFailureMessage) {
+          if (shouldSkipExpectedOffloadedMissingSource(entry, variantFailureMessage)) {
+            await markSkippedUploadedItem(entry.item, entry.protected);
+            continue;
+          }
+
           await markFailedItem(entry.item, variantFailureMessage);
           continue;
         }
 
         if (hasEntryFailure) {
-          await markFailedItem(entry.item, buildUploadFailureMessage(upload, entry.uploadAssets));
+          const uploadFailureMessage = buildUploadFailureMessage(upload, entry.uploadAssets);
+
+          if (shouldSkipExpectedOffloadedMissingSource(entry, uploadFailureMessage)) {
+            await markSkippedUploadedItem(entry.item, entry.protected);
+            continue;
+          }
+
+          await markFailedItem(entry.item, uploadFailureMessage);
           continue;
         }
 
@@ -1486,6 +1531,15 @@ module.exports = ({ strapi }) => {
       }
 
       if (failureMessage) {
+        if (shouldSkipExpectedOffloadedMissingSource({
+          current,
+          persistedCurrent,
+          protected: targetProtected,
+        }, failureMessage)) {
+          await markSkippedUploadedItem(item, targetProtected);
+          continue;
+        }
+
         await markFailedItem(item, failureMessage);
         continue;
       }
@@ -1493,6 +1547,7 @@ module.exports = ({ strapi }) => {
       pendingBatch.push({
         item,
         current,
+        persistedCurrent,
         protected: targetProtected,
         syncPlan,
         syncSignature,
@@ -2381,7 +2436,7 @@ module.exports = ({ strapi }) => {
 
       schedulerHandle = setInterval(() => {
         this.runScheduledSync().catch((error) => {
-          strapi.log.error(`[smoothcdn] CDN Connector scheduled sync failed: ${error.message}`);
+          strapi.log.error(`[smoothbundle] CDN Connector scheduled sync failed: ${error.message}`);
         });
       }, 60 * 1000);
     },

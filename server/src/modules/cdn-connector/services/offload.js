@@ -46,7 +46,7 @@ const PROTECTED_ASSET_PREVIEW_SVG = `<?xml version="1.0" encoding="UTF-8" standa
 const PROTECTED_ASSET_PREVIEW_DATA_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(PROTECTED_ASSET_PREVIEW_SVG)}`;
 
 function plugin(strapi) {
-  return strapi.plugin('smoothcdn');
+  return strapi.plugin('smoothbundle');
 }
 
 function normalizeFileId(value) {
@@ -182,7 +182,7 @@ function stripUpdatedAtParamFromUrl(urlValue) {
   try {
     const resolved = /^https?:\/\//i.test(normalized)
       ? new URL(normalized)
-      : new URL(normalized, 'http://smoothcdn-local');
+      : new URL(normalized, 'http://smoothbundle-local');
 
     resolved.searchParams.delete('updatedAt');
     const next = resolved.toString();
@@ -276,7 +276,7 @@ function addNoUsageLogsParamToUrl(urlValue) {
   try {
     const resolved = /^https?:\/\//i.test(normalized)
       ? new URL(normalized)
-      : new URL(normalized, 'http://smoothcdn-local');
+      : new URL(normalized, 'http://smoothbundle-local');
 
     resolved.searchParams.set('no-usage-logs', '1');
     const next = resolved.toString();
@@ -404,7 +404,7 @@ module.exports = ({ strapi }) => {
         entriesByFileId,
       };
     } catch (error) {
-      strapi.log.warn(`[smoothcdn] CDN Connector URL rewrite cache refresh failed: ${error.message}`);
+      strapi.log.warn(`[smoothbundle] CDN Connector URL rewrite cache refresh failed: ${error.message}`);
       invalidateCache();
       rewriteCache.refreshedAt = Date.now();
     }
@@ -586,19 +586,19 @@ module.exports = ({ strapi }) => {
 
       fileService.signFileUrls = async (payload, ...args) => {
         const bypassRewrite = args.some(
-          (arg) => arg && typeof arg === 'object' && arg.__smoothcdnBypassRewrite === true
+          (arg) => arg && typeof arg === 'object' && arg.__smoothbundleBypassRewrite === true
         );
         const normalizedArgs = args.map((arg) => {
           if (
             !arg ||
             typeof arg !== 'object' ||
             Array.isArray(arg) ||
-            !Object.prototype.hasOwnProperty.call(arg, '__smoothcdnBypassRewrite')
+            !Object.prototype.hasOwnProperty.call(arg, '__smoothbundleBypassRewrite')
           ) {
             return arg;
           }
 
-          const { __smoothcdnBypassRewrite, ...rest } = arg;
+          const { __smoothbundleBypassRewrite, ...rest } = arg;
           return rest;
         });
         const signed = await originalSignFileUrls(payload, ...normalizedArgs);

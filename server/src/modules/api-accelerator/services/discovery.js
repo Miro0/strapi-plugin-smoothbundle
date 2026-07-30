@@ -65,7 +65,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async discoverCollectionRoutes(uid, contentType, settings) {
-    const originFetcher = strapi.plugin('smoothcdn').service('api-accelerator-origin-fetcher');
+    const originFetcher = strapi.plugin('smoothbundle').service('api-accelerator-origin-fetcher');
     const base = this.getManagedRouteBase(uid, contentType);
     const routes = [];
     const response = await originFetcher.fetchJson(base.route, {
@@ -143,7 +143,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async discoverSingleTypeRoute(uid, contentType, settings) {
-    const originFetcher = strapi.plugin('smoothcdn').service('api-accelerator-origin-fetcher');
+    const originFetcher = strapi.plugin('smoothbundle').service('api-accelerator-origin-fetcher');
     const base = this.getManagedRouteBase(uid, contentType);
     const response = await originFetcher.fetchJson(base.route, { settings });
 
@@ -165,7 +165,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async discover(options = {}) {
-    const enabled = await strapi.plugin('smoothcdn').service('module-registry').isEnabled('api-accelerator');
+    const enabled = await strapi.plugin('smoothbundle').service('module-registry').isEnabled('api-accelerator');
     if (!enabled) {
       return {
         processed: 0,
@@ -175,8 +175,8 @@ module.exports = ({ strapi }) => ({
       };
     }
 
-    const settings = options.settings || (await strapi.plugin('smoothcdn').service('api-accelerator-settings').getResolved());
-    const repository = strapi.plugin('smoothcdn').service('api-accelerator-repository');
+    const settings = options.settings || (await strapi.plugin('smoothbundle').service('api-accelerator-settings').getResolved());
+    const repository = strapi.plugin('smoothbundle').service('api-accelerator-repository');
     const contentTypes = this.listManagedContentTypes(settings, options.contentTypes || []);
     const summary = {
       processed: 0,
@@ -200,7 +200,7 @@ module.exports = ({ strapi }) => ({
       summary.failed += discoveryResult.routes.filter((route) => route.status === 'error').length;
     }
 
-    await strapi.plugin('smoothcdn').service('api-accelerator-settings').touch('lastDiscoveryAt');
+    await strapi.plugin('smoothbundle').service('api-accelerator-settings').touch('lastDiscoveryAt');
 
     return summary;
   },

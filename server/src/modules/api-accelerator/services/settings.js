@@ -62,8 +62,8 @@ module.exports = ({ strapi }) => ({
   },
 
   async getResolved(overrides = {}) {
-    const coreSettings = await strapi.plugin('smoothcdn').service('core-settings').get();
-    const project = await strapi.plugin('smoothcdn').service('core-settings').getProject('api-accelerator');
+    const coreSettings = await strapi.plugin('smoothbundle').service('core-settings').get();
+    const project = await strapi.plugin('smoothbundle').service('core-settings').getProject('api-accelerator');
     const moduleSettings = await this.get();
     return {
       ...coreSettings,

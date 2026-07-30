@@ -21,7 +21,7 @@ module.exports = ({ strapi }) => {
   let isRunning = false;
 
   async function isModuleEnabled() {
-    return strapi.plugin('smoothcdn').service('module-registry').isEnabled('api-accelerator');
+    return strapi.plugin('smoothbundle').service('module-registry').isEnabled('api-accelerator');
   }
 
 function collectionPageTarget(route, page) {
@@ -214,7 +214,7 @@ function collectionPageTarget(route, page) {
       return null;
     }
 
-    const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+    const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
     const state = await runtimeState.update((current) => {
       const existing = current.syncJob || {};
 
@@ -235,7 +235,7 @@ function collectionPageTarget(route, page) {
   }
 
   async function reconcileStaleSyncState() {
-    const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+    const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
     const state = await runtimeState.get();
     const currentJob = state.syncJob || null;
     const syncLock = state.syncLock || { owner: '', expiresAt: 0 };
@@ -269,8 +269,8 @@ function collectionPageTarget(route, page) {
   }
 
   async function buildCollectionAssets(entry, settings) {
-    const originFetcher = strapi.plugin('smoothcdn').service('api-accelerator-origin-fetcher');
-    const smoothClient = strapi.plugin('smoothcdn').service('smooth-client');
+    const originFetcher = strapi.plugin('smoothbundle').service('api-accelerator-origin-fetcher');
+    const smoothClient = strapi.plugin('smoothbundle').service('smooth-client');
     const pageSize = settings.collectionSyncPerPage;
     const pages = [];
     const pageUrls = [];
@@ -351,7 +351,7 @@ function collectionPageTarget(route, page) {
   }
 
   async function buildSingleAsset(entry, settings) {
-    const originFetcher = strapi.plugin('smoothcdn').service('api-accelerator-origin-fetcher');
+    const originFetcher = strapi.plugin('smoothbundle').service('api-accelerator-origin-fetcher');
     const response = await originFetcher.fetchJson(entry.route, { settings });
 
     if (!response.success) {
@@ -389,7 +389,7 @@ function collectionPageTarget(route, page) {
       return;
     }
 
-    await strapi.plugin('smoothcdn').service('smooth-client').deleteRouteAssets(uploadedRemovedRoutes, 'api-accelerator');
+    await strapi.plugin('smoothbundle').service('smooth-client').deleteRouteAssets(uploadedRemovedRoutes, 'api-accelerator');
   }
 
   function buildRoutesForContentChange(change) {
@@ -416,7 +416,7 @@ function collectionPageTarget(route, page) {
 
   return {
     async forceResetSyncState(reason = 'Sync state was reset.') {
-      const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+      const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
       isRunning = false;
 
       const nextState = await runtimeState.update((current) => {
@@ -454,7 +454,7 @@ function collectionPageTarget(route, page) {
         };
       }
 
-      const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+      const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
       const { state } = await reconcileStaleSyncState();
       const currentJob = state.syncJob || null;
       const currentLock = state.syncLock || { owner: '', expiresAt: 0 };
@@ -490,7 +490,7 @@ function collectionPageTarget(route, page) {
           trigger: options.trigger || 'manual',
           syncJobId: jobId,
         }).catch(async (error) => {
-          strapi.log.error(`[smoothcdn] API Accelerator sync job failed: ${error.message}`);
+          strapi.log.error(`[smoothbundle] API Accelerator sync job failed: ${error.message}`);
           await updateSyncJob(jobId, {
             status: 'failed',
             finishedAt: nowIso(),
@@ -517,7 +517,7 @@ function collectionPageTarget(route, page) {
         };
       }
 
-      const discovery = await strapi.plugin('smoothcdn').service('api-accelerator-discovery').discover(options);
+      const discovery = await strapi.plugin('smoothbundle').service('api-accelerator-discovery').discover(options);
       await purgeRemovedRoutes(discovery);
       return this.syncRoutes([], {
         ...options,
@@ -562,7 +562,7 @@ function collectionPageTarget(route, page) {
         };
       }
 
-      const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+      const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
       const lockOwner = `${instanceId}:sync:${Date.now()}`;
       const lockClaimed = await runtimeState.claimLock('syncLock', lockOwner, 15 * 60 * 1000);
 
@@ -586,9 +586,9 @@ function collectionPageTarget(route, page) {
       isRunning = true;
 
       try {
-        const settings = await strapi.plugin('smoothcdn').service('api-accelerator-settings').getResolved();
-        const repository = strapi.plugin('smoothcdn').service('api-accelerator-repository');
-        const smoothClient = strapi.plugin('smoothcdn').service('smooth-client');
+        const settings = await strapi.plugin('smoothbundle').service('api-accelerator-settings').getResolved();
+        const repository = strapi.plugin('smoothbundle').service('api-accelerator-repository');
+        const smoothClient = strapi.plugin('smoothbundle').service('smooth-client');
 
         if (!settings.connected) {
           await updateSyncJob(syncJobId, {
@@ -787,7 +787,7 @@ function collectionPageTarget(route, page) {
         await flushPendingUploads();
 
         const completedAt = nowIso();
-        await strapi.plugin('smoothcdn').service('api-accelerator-settings').update({
+        await strapi.plugin('smoothbundle').service('api-accelerator-settings').update({
           lastSyncAt: completedAt,
           ...(options.trigger === 'scheduled' ? { lastAutoSyncAt: completedAt } : {}),
         });
@@ -829,8 +829,8 @@ function collectionPageTarget(route, page) {
         return;
       }
 
-      const settings = await strapi.plugin('smoothcdn').service('api-accelerator-settings').get();
-      await strapi.plugin('smoothcdn').service('api-accelerator-runtime-state').queueContentChanges(
+      const settings = await strapi.plugin('smoothbundle').service('api-accelerator-settings').get();
+      await strapi.plugin('smoothbundle').service('api-accelerator-runtime-state').queueContentChanges(
         [
           {
             uid: normalizedUid,
@@ -848,8 +848,8 @@ function collectionPageTarget(route, page) {
         };
       }
 
-      const settings = await strapi.plugin('smoothcdn').service('api-accelerator-settings').getResolved();
-      const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+      const settings = await strapi.plugin('smoothbundle').service('api-accelerator-settings').getResolved();
+      const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
       const changes = await runtimeState.takeDuePendingContentChanges();
 
       if (changes.length === 0) {
@@ -883,7 +883,7 @@ function collectionPageTarget(route, page) {
               .filter(Boolean)
           )
         );
-        const discovery = await strapi.plugin('smoothcdn').service('api-accelerator-discovery').discover({
+        const discovery = await strapi.plugin('smoothbundle').service('api-accelerator-discovery').discover({
           settings,
           contentTypes,
         });
@@ -924,7 +924,7 @@ function collectionPageTarget(route, page) {
         return;
       }
 
-      const settings = await strapi.plugin('smoothcdn').service('api-accelerator-settings').getResolved();
+      const settings = await strapi.plugin('smoothbundle').service('api-accelerator-settings').getResolved();
       const intervalMs = parseIntervalFrequency(settings.autoSyncFrequency);
 
       if (!intervalMs) {
@@ -936,7 +936,7 @@ function collectionPageTarget(route, page) {
         return;
       }
 
-      const discovery = await strapi.plugin('smoothcdn').service('api-accelerator-discovery').discover({ settings });
+      const discovery = await strapi.plugin('smoothbundle').service('api-accelerator-discovery').discover({ settings });
       await purgeRemovedRoutes(discovery);
       await this.syncRoutes([], {
         trigger: 'scheduled',
@@ -948,7 +948,7 @@ function collectionPageTarget(route, page) {
         return;
       }
 
-      const runtimeState = strapi.plugin('smoothcdn').service('api-accelerator-runtime-state');
+      const runtimeState = strapi.plugin('smoothbundle').service('api-accelerator-runtime-state');
       const lockOwner = `${instanceId}:scheduler:${Date.now()}`;
       const lockClaimed = await runtimeState.claimLock(
         'schedulerLock',
@@ -975,12 +975,12 @@ function collectionPageTarget(route, page) {
 
       schedulerHandle = setInterval(() => {
         this.tickScheduler().catch((error) => {
-          strapi.log.error(`[smoothcdn] Scheduled sync failed: ${error.message}`);
+          strapi.log.error(`[smoothbundle] Scheduled sync failed: ${error.message}`);
         });
       }, SCHEDULER_POLL_MS);
 
       this.tickScheduler().catch((error) => {
-        strapi.log.error(`[smoothcdn] Initial scheduler tick failed: ${error.message}`);
+        strapi.log.error(`[smoothbundle] Initial scheduler tick failed: ${error.message}`);
       });
     },
 
@@ -1000,9 +1000,9 @@ function collectionPageTarget(route, page) {
         };
       }
 
-      const repository = strapi.plugin('smoothcdn').service('api-accelerator-repository');
+      const repository = strapi.plugin('smoothbundle').service('api-accelerator-repository');
       const normalizedRoutes = Array.isArray(routes) ? routes.filter(Boolean) : [];
-      const deletion = await strapi.plugin('smoothcdn').service('smooth-client').deleteRouteAssets(
+      const deletion = await strapi.plugin('smoothbundle').service('smooth-client').deleteRouteAssets(
         normalizedRoutes,
         'api-accelerator'
       );

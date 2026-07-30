@@ -1,3 +1,3 @@
 'use strict';
 
-module.exports = 'smoothcdn';
+module.exports = 'smoothbundle';

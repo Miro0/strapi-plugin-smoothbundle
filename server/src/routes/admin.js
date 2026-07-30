@@ -197,6 +197,14 @@ module.exports = [
     },
   },
   {
+    method: 'GET',
+    path: '/modules/cdn-connector/media/:fileId/open',
+    handler: 'cdnConnector.openAsset',
+    config: {
+      policies: [],
+    },
+  },
+  {
     method: 'POST',
     path: '/modules/cdn-connector/accesses/grant',
     handler: 'cdnConnector.grantAccess',

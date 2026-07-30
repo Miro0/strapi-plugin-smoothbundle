@@ -29,7 +29,7 @@ function decodePayload(token = '') {
 module.exports = ({ strapi }) => ({
   getSecret() {
     const appKeys = Array.isArray(strapi?.server?.app?.keys) ? strapi.server.app.keys : [];
-    return appKeys.length > 0 ? appKeys.join('|') : 'smoothcdn-action-nonce';
+    return appKeys.length > 0 ? appKeys.join('|') : 'smoothbundle-action-nonce';
   },
 
   create(payload = {}) {

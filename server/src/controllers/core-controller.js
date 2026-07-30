@@ -398,7 +398,7 @@ function renderAutoSubmitPage({ actionUrl, fields, title }) {
       <section>
         <h1>${escapeHtml(title)}</h1>
         <p>Redirecting you to Smooth Bundle…</p>
-        <form id="smoothcdn-auto-login" method="POST" action="${escapeHtml(actionUrl)}">
+        <form id="smoothbundle-auto-login" method="POST" action="${escapeHtml(actionUrl)}">
           ${hiddenFields}
           <button type="submit">Continue</button>
         </form>
@@ -406,7 +406,7 @@ function renderAutoSubmitPage({ actionUrl, fields, title }) {
     </main>
     <script>
       window.setTimeout(function () {
-        var form = document.getElementById('smoothcdn-auto-login');
+        var form = document.getElementById('smoothbundle-auto-login');
         if (form) {
           form.submit();
         }
@@ -728,7 +728,7 @@ module.exports = ({ strapi }) => ({
     ctx.status = 200;
     ctx.type = 'html';
     ctx.set('Cache-Control', 'no-store');
-    ctx.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action https://smoothcdn.com; base-uri 'none'");
+    ctx.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action https://smoothbundle.com; base-uri 'none'");
     ctx.set('Referrer-Policy', 'no-referrer');
     ctx.body = renderAutoSubmitPage({
       actionUrl: result.autoLoginUrl,

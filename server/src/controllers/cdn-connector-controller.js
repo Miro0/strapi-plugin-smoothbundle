@@ -1,9 +1,53 @@
 'use strict';
 
+const { CDN_AUTH_API_BASE_URL } = require('../utils/constants');
+const { escapeHtml } = require('../utils/helpers');
 const pluginId = require('../plugin-id');
 
 function plugin(strapi) {
   return strapi.plugin(pluginId);
+}
+
+function renderAutoSubmitPage({ actionUrl, title, fields }) {
+  const hiddenFields = Object.entries(fields || {})
+    .map(([name, value]) =>
+      `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`
+    )
+    .join('\n');
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+  </head>
+  <body>
+    <form id="smoothbundle-auto-login" method="POST" action="${escapeHtml(actionUrl)}">
+      ${hiddenFields}
+      <button type="submit">Continue</button>
+    </form>
+    <script>
+      window.setTimeout(function () {
+        var form = document.getElementById('smoothbundle-auto-login');
+        if (form) {
+          form.submit();
+        }
+      }, 0);
+    </script>
+  </body>
+</html>`;
+}
+
+function isSmoothBundleUrl(value = '') {
+  try {
+    const url = new URL(String(value || '').trim());
+    const hostname = url.hostname.toLowerCase();
+
+    return url.protocol === 'https:' && (hostname === 'smoothbundle.com' || hostname.endsWith('.smoothbundle.com'));
+  } catch (error) {
+    return false;
+  }
 }
 
 function buildGrantAccessAssetPath(path = '', filename = '') {
@@ -25,6 +69,21 @@ function findOriginalSyncedEntry(entry = {}) {
   const syncedEntries = Array.isArray(entry?.syncedEntries) ? entry.syncedEntries : [];
 
   return syncedEntries.find((item) => String(item?.key || '').trim() === 'original') || syncedEntries[0] || null;
+}
+
+function findSyncedEntryByKey(entry = {}, key = '') {
+  const syncedEntries = Array.isArray(entry?.syncedEntries) ? entry.syncedEntries : [];
+  const normalizedKey = String(key || '').trim();
+
+  if (normalizedKey) {
+    const matched = syncedEntries.find((item) => String(item?.key || '').trim() === normalizedKey);
+
+    if (matched) {
+      return matched;
+    }
+  }
+
+  return findOriginalSyncedEntry(entry);
 }
 
 function buildGrantAccessAssetOptions(mediaItems = []) {
@@ -64,6 +123,70 @@ async function ensureEnabled(strapi, ctx) {
 }
 
 module.exports = ({ strapi }) => ({
+  async openAsset(ctx) {
+    if (!(await ensureEnabled(strapi, ctx))) {
+      return;
+    }
+
+    const fileId = String(ctx.params?.fileId || '').trim();
+    const assetKey = String(ctx.query?.key || 'original').trim() || 'original';
+    const mediaItems = await plugin(strapi).service('cdn-connector-sync').listMediaItems();
+    const mediaItem = mediaItems.find((item) => String(item?.fileId || '').trim() === fileId);
+    const syncedEntry = findSyncedEntryByKey(mediaItem, assetKey);
+    const publicUrl = String(syncedEntry?.publicUrl || '').trim();
+
+    if (!mediaItem || String(mediaItem.syncStatus || '').trim() !== 'uploaded' || !publicUrl) {
+      ctx.status = 404;
+      ctx.body = {
+        error: {
+          message: 'Synced CDN asset not found.',
+        },
+      };
+      return;
+    }
+
+    if (!mediaItem.protected) {
+      ctx.redirect(publicUrl);
+      return;
+    }
+
+    if (!isSmoothBundleUrl(publicUrl)) {
+      ctx.status = 400;
+      ctx.body = {
+        error: {
+          message: 'Protected CDN asset URL is invalid.',
+        },
+      };
+      return;
+    }
+
+    const settings = await plugin(strapi).service('core-settings').get();
+
+    if (!settings.connected || !settings.accessToken) {
+      ctx.status = 400;
+      ctx.body = {
+        error: {
+          message: 'Connect to Smooth Bundle first.',
+        },
+      };
+      return;
+    }
+
+    ctx.status = 200;
+    ctx.type = 'html';
+    ctx.set('Cache-Control', 'no-store');
+    ctx.set('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; form-action https://smoothbundle.com; base-uri 'none'");
+    ctx.set('Referrer-Policy', 'no-referrer');
+    ctx.body = renderAutoSubmitPage({
+      actionUrl: `${CDN_AUTH_API_BASE_URL}/api/auth/login/auto`,
+      title: 'Open protected Smooth Bundle asset',
+      fields: {
+        api_key: settings.accessToken,
+        next: publicUrl,
+      },
+    });
+  },
+
   async updateSettings(ctx) {
     const settingsService = plugin(strapi).service('cdn-connector-settings');
     const coreSettingsService = plugin(strapi).service('core-settings');

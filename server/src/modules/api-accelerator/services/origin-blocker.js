@@ -6,7 +6,7 @@ const { normalizeRoute } = require('../../../utils/helpers');
 module.exports = ({ strapi }) => ({
   middleware() {
     return async (ctx, next) => {
-      const plugin = strapi.plugin('smoothcdn');
+      const plugin = strapi.plugin('smoothbundle');
       const enabled = await plugin.service('module-registry').isEnabled('api-accelerator');
       if (!enabled) {
         await next();
@@ -48,7 +48,7 @@ module.exports = ({ strapi }) => ({
       ctx.body = {
         error: {
           status: 403,
-          name: 'SmoothCdnApiAcceleratorBlocked',
+          name: 'SmoothBundleApiAcceleratorBlocked',
           message: 'Content API GET endpoints are blocked by Smooth Bundle API Accelerator settings.',
         },
       };

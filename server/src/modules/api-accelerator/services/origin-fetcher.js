@@ -195,7 +195,7 @@ function resolvePopulateTree(strapi, uid) {
 
 module.exports = ({ strapi }) => ({
   async buildUrl(route, options = {}) {
-    const settings = options.settings || (await strapi.plugin('smoothcdn').service('api-accelerator-settings').getResolved());
+    const settings = options.settings || (await strapi.plugin('smoothbundle').service('api-accelerator-settings').getResolved());
     const baseUrl = buildAbsoluteBaseUrl(strapi, settings, {
       internal: options.internal === true,
     });
@@ -441,7 +441,7 @@ module.exports = ({ strapi }) => ({
       return internalResult;
     }
 
-    const settings = options.settings || (await strapi.plugin('smoothcdn').service('api-accelerator-settings').getResolved());
+    const settings = options.settings || (await strapi.plugin('smoothbundle').service('api-accelerator-settings').getResolved());
     const url = await this.buildUrl(route, {
       settings,
       query: buildPopulateQuery(options.query || {}),

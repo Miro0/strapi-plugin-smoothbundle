@@ -2,7 +2,7 @@
 
 const { CDN_CONNECTOR_UPLOAD_DEBOUNCE_MS, CDN_PUBLIC_HOST } = require('./utils/constants');
 
-const CDN_CUSTOM_SUBDOMAIN_SOURCE = 'https://*.smoothcdn.com';
+const CDN_CUSTOM_SUBDOMAIN_SOURCE = 'https://*.smoothbundle.com';
 
 function normalizePathPrefix(value, fallback = '/admin') {
   const normalized = String(value || '').trim();
@@ -63,7 +63,7 @@ function appendSourceToCspDirective(value, directiveName, source) {
 }
 
 module.exports = ({ strapi }) => {
-  const plugin = strapi.plugin('smoothcdn');
+  const plugin = strapi.plugin('smoothbundle');
   const adminPath = normalizePathPrefix(strapi.config.get('admin.path') || '/admin');
   const watchedDocumentActions = new Set(['create', 'update', 'delete', 'publish', 'unpublish', 'discardDraft']);
   const watchedLifecycleActions = new Set([
@@ -87,7 +87,7 @@ module.exports = ({ strapi }) => {
       plugin.service('api-accelerator-sync').queueContentChange(normalizedUid, String(documentId || '').trim())
     ).catch((error) => {
       strapi.log.error(
-        `[smoothcdn] Failed to queue content change "${normalizedUid}" from ${source}: ${error.message}`
+        `[smoothbundle] Failed to queue content change "${normalizedUid}" from ${source}: ${error.message}`
       );
     });
   };
@@ -119,7 +119,7 @@ module.exports = ({ strapi }) => {
           .queueMediaFiles(normalizedIds, CDN_CONNECTOR_UPLOAD_DEBOUNCE_MS);
       })
       .catch((error) => {
-        strapi.log.error(`[smoothcdn] Failed to queue upload sync from ${source}: ${error.message}`);
+        strapi.log.error(`[smoothbundle] Failed to queue upload sync from ${source}: ${error.message}`);
       });
   };
 
@@ -145,7 +145,7 @@ module.exports = ({ strapi }) => {
         return plugin.service('cdn-connector-optimize-queue').queueDeletedMediaFiles(normalizedIds);
       })
       .catch((error) => {
-        strapi.log.error(`[smoothcdn] Failed to queue deleted upload cleanup from ${source}: ${error.message}`);
+        strapi.log.error(`[smoothbundle] Failed to queue deleted upload cleanup from ${source}: ${error.message}`);
       });
   };
 
@@ -269,7 +269,7 @@ module.exports = ({ strapi }) => {
       documentMiddlewareRegistered = true;
     } catch (error) {
       strapi.log.warn(
-        `[smoothcdn] Could not register document service middleware, falling back to DB lifecycles: ${error.message}`
+        `[smoothbundle] Could not register document service middleware, falling back to DB lifecycles: ${error.message}`
       );
     }
   }

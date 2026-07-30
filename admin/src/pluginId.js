@@ -1,3 +1,3 @@
-const pluginId = 'smoothcdn';
+const pluginId = 'smoothbundle';
 
 export default pluginId;

@@ -28,7 +28,7 @@ import pluginId from '../pluginId';
 const CORE_VIEW_ID = 'settings/core';
 const RESTORE_ASSETS_VIEW_ID = 'tools/restore-assets';
 const UNUSED_ASSETS_VIEW_ID = 'tools/unused-assets';
-const CDN_PUBLIC_HOST = 'https://cdn.smoothcdn.com';
+const CDN_PUBLIC_HOST = 'https://cdn.smoothbundle.com';
 const PLUGIN_SIDE_NAV_WIDTH = '23.2rem';
 const TABLE_PAGE_SIZE = 10;
 
@@ -290,6 +290,35 @@ function normalizeCdnConnectorMediaItem(item = {}) {
           .filter((entry) => entry.filename)
       : [],
   };
+}
+
+function buildCdnConnectorAssetOpenUrl(item = {}, entry = {}) {
+  const publicUrl = String(entry?.publicUrl || '').trim();
+
+  if (!publicUrl) {
+    return '';
+  }
+
+  if (!item?.protected) {
+    return publicUrl;
+  }
+
+  const fileId = encodeURIComponent(String(item.fileId || '').trim());
+  const key = encodeURIComponent(String(entry?.key || 'original').trim() || 'original');
+
+  if (!fileId) {
+    return '';
+  }
+
+  return `/${pluginId}/modules/cdn-connector/media/${fileId}/open?key=${key}`;
+}
+
+function openExternalUrl(url) {
+  const normalizedUrl = String(url || '').trim();
+
+  if (normalizedUrl) {
+    window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+  }
 }
 
 function normalizeCdnConnectorAccess(item = {}) {
@@ -611,7 +640,7 @@ function getPlanAction(account) {
       return {
         type: 'link',
         label: 'Upgrade Smooth Bundle account',
-        href: 'https://smoothcdn.com/panel/account/plan-billing/upgrade',
+        href: 'https://smoothbundle.com/panel/account/plan-billing/upgrade',
       };
     default:
       return null;
@@ -911,7 +940,7 @@ function normalizeCustomSubdomain(value) {
   const hostCandidate = normalized
     .replace(/^https?:\/\//i, '')
     .replace(/\/.*$/, '')
-    .replace(/\.smoothcdn\.com$/i, '')
+    .replace(/\.smoothbundle\.com$/i, '')
     .replace(/^\.+|\.+$/g, '');
 
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(hostCandidate) ? hostCandidate : '';
@@ -926,7 +955,7 @@ function buildPublicJsonUrlForTarget(target, userSlug, projectSlug, customSubdom
     : `/${String(target.path || '').trim().replace(/^\/+|\/+$/g, '')}`;
 
   if (normalizedCustomSubdomain) {
-    return `https://${normalizedCustomSubdomain}.smoothcdn.com${normalizedPath}/${encodeURIComponent(target.filename)}`;
+    return `https://${normalizedCustomSubdomain}.smoothbundle.com${normalizedPath}/${encodeURIComponent(target.filename)}`;
   }
 
   if (!normalizedUserSlug || !normalizedProjectSlug) {
@@ -1343,7 +1372,7 @@ function PluginSideNav({ activeViewId, modules, canAccessModules, cdnConnectorDe
           <Divider background="neutral150" />
           <PluginSideNavContent>
             <SubNav.Sections>
-              <SubNav.Section label="Settings" sectionId="smoothcdn-settings">
+              <SubNav.Section label="Settings" sectionId="smoothbundle-settings">
                 {[
                   <SideNavLink
                     key={CORE_VIEW_ID}
@@ -1355,7 +1384,7 @@ function PluginSideNav({ activeViewId, modules, canAccessModules, cdnConnectorDe
               </SubNav.Section>
               <SubNav.Section
                 label="Modules"
-                sectionId="smoothcdn-modules"
+                sectionId="smoothbundle-modules"
               >
                 {modules.map((module) => (
                   <SideNavLink
@@ -1369,7 +1398,7 @@ function PluginSideNav({ activeViewId, modules, canAccessModules, cdnConnectorDe
                 ))}
               </SubNav.Section>
               {canAccessModules && modules.some((module) => module.id === 'cdn-connector' && module.enabled) ? (
-                <SubNav.Section label="Tools" sectionId="smoothcdn-tools">
+                <SubNav.Section label="Tools" sectionId="smoothbundle-tools">
                   {!cdnConnectorDeleteAssetsEnabled ? (
                     <SideNavLink
                       key={RESTORE_ASSETS_VIEW_ID}
@@ -1768,7 +1797,8 @@ function MediaTableCard({
                   const canUnsync = !isBusy && Boolean(item.fileId) && Boolean(item.syncable);
                   const canProtect = !isBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() === 'uploaded' && !item.protected;
                   const canUnprotect = !isBusy && Boolean(item.fileId) && String(item.syncStatus || '').trim() === 'uploaded' && item.protected;
-                  const canOpenOriginal = Boolean(originalEntry?.publicUrl) && !item.protected;
+                  const originalOpenUrl = buildCdnConnectorAssetOpenUrl(item, originalEntry);
+                  const canOpenOriginal = Boolean(originalOpenUrl);
                   const canCopyOriginal = Boolean(originalEntry?.publicUrl);
                   const visiblePublicVariantEntries = visibleVariantEntries;
                   const canToggleExpanded = !isBusy && visiblePublicVariantEntries.length > 0;
@@ -1856,7 +1886,7 @@ function MediaTableCard({
                               {canOpenOriginal ? (
                                 <MiniActionButton
                                   type="button"
-                                  onClick={() => window.open(originalEntry.publicUrl, '_blank', 'noopener,noreferrer')}
+                                  onClick={() => openExternalUrl(originalOpenUrl)}
                                 >
                                   Open
                                 </MiniActionButton>
@@ -1897,7 +1927,7 @@ function MediaTableCard({
                                       <Flex gap={1} justifyContent="flex-end" wrap="nowrap">
                                         <MiniActionButton
                                           type="button"
-                                          onClick={() => window.open(entry.publicUrl, '_blank', 'noopener,noreferrer')}
+                                          onClick={() => openExternalUrl(buildCdnConnectorAssetOpenUrl(item, entry))}
                                         >
                                           Open
                                         </MiniActionButton>
@@ -4025,7 +4055,7 @@ export default function App() {
         {!account.connected ? (
           <Typography variant="pi" textColor="neutral600">
             Quota for requests, bandwidth, and asset size depends on your selected Smooth Bundle plan.{' '}
-            <AlertLink href="https://smoothcdn.com/pricing" isExternal>
+            <AlertLink href="https://smoothbundle.com/pricing" isExternal>
               More info and plan details
             </AlertLink>
           </Typography>
@@ -4114,7 +4144,7 @@ export default function App() {
 
                 <TextField
                   label="Custom subdomain"
-                  hint="CDN subdomain to point to your project. Default one is https://cdn.smoothcdn.com/[user]/[project]. You can replace it with https://[custom-subdomain].smoothcdn.com."
+                  hint="CDN subdomain to point to your project. Default one is https://cdn.smoothbundle.com/[user]/[project]. You can replace it with https://[custom-subdomain].smoothbundle.com."
                   name="api-accelerator-custom-subdomain"
                   disabled={isApiAcceleratorBusy}
                   value={apiAcceleratorSettings.customSubdomain || ''}
@@ -4464,7 +4494,7 @@ export default function App() {
 
                 <TextField
                   label="Custom subdomain"
-                  hint="CDN subdomain to point to your project. Default one is https://cdn.smoothcdn.com/[user]/[project]. You can replace it with https://[custom-subdomain].smoothcdn.com."
+                  hint="CDN subdomain to point to your project. Default one is https://cdn.smoothbundle.com/[user]/[project]. You can replace it with https://[custom-subdomain].smoothbundle.com."
                   name="cdn-connector-custom-subdomain"
                   disabled={isCdnConnectorBusy}
                   value={cdnConnectorSettings.customSubdomain || ''}

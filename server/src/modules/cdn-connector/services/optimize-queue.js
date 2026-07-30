@@ -167,7 +167,7 @@ module.exports = ({ strapi }) => {
       pendingTickTimeout = setTimeout(() => {
         pendingTickTimeout = null;
         this.tickScheduler().catch((error) => {
-          strapi.log.error(`[smoothcdn] Immediate queue tick failed: ${error.message}`);
+          strapi.log.error(`[smoothbundle] Immediate queue tick failed: ${error.message}`);
         });
       }, normalizedDelay);
     },
@@ -489,12 +489,12 @@ module.exports = ({ strapi }) => {
 
       schedulerHandle = setInterval(() => {
         this.tickScheduler().catch((error) => {
-          strapi.log.error(`[smoothcdn] CDN Connector queue failed: ${error.message}`);
+          strapi.log.error(`[smoothbundle] CDN Connector queue failed: ${error.message}`);
         });
       }, CDN_CONNECTOR_OPTIMIZE_POLL_MS);
 
       this.tickScheduler().catch((error) => {
-        strapi.log.error(`[smoothcdn] Initial CDN Connector queue tick failed: ${error.message}`);
+        strapi.log.error(`[smoothbundle] Initial CDN Connector queue tick failed: ${error.message}`);
       });
     },
 

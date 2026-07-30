@@ -33,7 +33,7 @@ Enable the plugin in config/plugins.js:
 
 ```js
 module.exports = {
-  smoothcdn: {
+  smoothbundle: {
     enabled: true,
   },
 };
@@ -43,7 +43,7 @@ Or in config/plugins.ts:
 
 ```js
 export default () => ({
-  smoothcdn: {
+  smoothbundle: {
     enabled: true,
   },
 });

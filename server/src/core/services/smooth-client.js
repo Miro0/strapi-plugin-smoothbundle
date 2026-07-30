@@ -59,7 +59,7 @@ function normalizeCustomSubdomain(value) {
   const hostCandidate = normalized
     .replace(/^https?:\/\//i, '')
     .replace(/\/.*$/, '')
-    .replace(/\.smoothcdn\.com$/i, '')
+    .replace(/\.smoothbundle\.com$/i, '')
     .replace(/^\.+|\.+$/g, '');
 
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(hostCandidate) ? hostCandidate : '';
@@ -486,14 +486,14 @@ module.exports = ({ strapi }) => ({
     const adminPath = String(strapi.config.get('admin.path') || '/admin').trim() || '/admin';
     const normalizedAdminPath = adminPath.startsWith('/') ? adminPath : `/${adminPath}`;
 
-    return `${this.buildServerBaseUrl(settings)}${normalizedAdminPath.replace(/\/+$/, '')}/plugins/smoothcdn`;
+    return `${this.buildServerBaseUrl(settings)}${normalizedAdminPath.replace(/\/+$/, '')}/plugins/smoothbundle`;
   },
 
   buildCallbackUrl(pathname = '', settings = {}) {
     const normalizedPathname = String(pathname || '').trim();
     const pathWithLeadingSlash = normalizedPathname.startsWith('/') ? normalizedPathname : `/${normalizedPathname}`;
 
-    return `${this.buildServerBaseUrl(settings)}/smoothcdn${pathWithLeadingSlash}`;
+    return `${this.buildServerBaseUrl(settings)}/smoothbundle${pathWithLeadingSlash}`;
   },
 
   buildCallbackUrlFromBase(pathname = '', baseUrl = '', params = {}) {
@@ -505,7 +505,7 @@ module.exports = ({ strapi }) => ({
 
     const normalizedPathname = String(pathname || '').trim();
     const pathWithLeadingSlash = normalizedPathname.startsWith('/') ? normalizedPathname : `/${normalizedPathname}`;
-    const url = new URL(`/smoothcdn${pathWithLeadingSlash}`, normalizedBaseUrl);
+    const url = new URL(`/smoothbundle${pathWithLeadingSlash}`, normalizedBaseUrl);
 
     for (const [key, value] of Object.entries(params || {})) {
       const normalizedValue = String(value || '').trim();
@@ -518,7 +518,7 @@ module.exports = ({ strapi }) => ({
   },
 
   buildIntegrateUrl(params = {}) {
-    const url = new URL('https://smoothcdn.com/integrate');
+    const url = new URL('https://smoothbundle.com/integrate');
 
     for (const [key, value] of Object.entries(params || {})) {
       const normalizedValue = String(value || '').trim();
@@ -613,7 +613,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async startLogin(options = {}) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const current = await settingsService.get();
     const guestMode = options.guest === true;
     const payload = {
@@ -710,7 +710,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async completeBrowserLogin(apiKey = '') {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const normalizedApiKey = String(apiKey || '').trim();
 
     if (!normalizedApiKey) {
@@ -736,8 +736,8 @@ module.exports = ({ strapi }) => ({
   },
 
   async startProjectIntegration(moduleId, options = {}) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
-    const registry = strapi.plugin('smoothcdn').service('module-registry');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const registry = strapi.plugin('smoothbundle').service('module-registry');
     const current = await settingsService.get();
     const definition = await registry.getDefinition(moduleId);
 
@@ -770,8 +770,8 @@ module.exports = ({ strapi }) => ({
   },
 
   async verifyIntegratedProject(moduleId, projectId) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
-    const registry = strapi.plugin('smoothcdn').service('module-registry');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const registry = strapi.plugin('smoothbundle').service('module-registry');
     const current = await settingsService.get();
     const definition = await registry.getDefinition(moduleId);
     const normalizedProjectId = String(projectId || '').trim();
@@ -845,7 +845,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async syncStatus() {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const current = await settingsService.get();
     const token = String(current.accessToken || '').trim();
 
@@ -909,7 +909,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async getProjectToken(moduleId) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -958,7 +958,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async prepareCreateFreeAccount() {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
 
     if (!settings.connected || !settings.accessToken) {
@@ -1003,7 +1003,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async disconnect() {
-    const settings = await strapi.plugin('smoothcdn').service('core-settings').markDisconnected();
+    const settings = await strapi.plugin('smoothbundle').service('core-settings').markDisconnected();
 
     return {
       success: true,
@@ -1012,8 +1012,8 @@ module.exports = ({ strapi }) => ({
   },
 
   async ensureProject(moduleId) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
-    const registry = strapi.plugin('smoothcdn').service('module-registry');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
+    const registry = strapi.plugin('smoothbundle').service('module-registry');
     const current = await settingsService.get();
     const definition = await registry.getDefinition(moduleId);
 
@@ -1144,7 +1144,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async updateProjectCustomSubdomain(moduleId, customSubdomain = '') {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     let project = await settingsService.getProject(moduleId);
     const normalizedCustomSubdomain = normalizeCustomSubdomain(customSubdomain);
@@ -1228,7 +1228,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async getProjectAccesses(moduleId = 'cdn-connector') {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1271,7 +1271,7 @@ module.exports = ({ strapi }) => ({
   async grantProjectAccess(email, assets = true, expiresAt = null, moduleId = 'cdn-connector') {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const normalizedExpiresAt = String(expiresAt || '').trim();
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1347,7 +1347,7 @@ module.exports = ({ strapi }) => ({
       };
     }
 
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1389,7 +1389,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async getDailyAssetUsage(moduleId = 'cdn-connector') {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1433,7 +1433,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async getProjectAssets(moduleId = 'cdn-connector') {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1459,7 +1459,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async uploadAssets(assets = [], moduleId = '', options = {}) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1597,7 +1597,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async deleteAssets(targets = [], moduleId = '') {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
 
@@ -1705,7 +1705,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async deleteRouteAssets(routes = [], moduleId = '') {
-    const repository = strapi.plugin('smoothcdn').service('api-accelerator-repository');
+    const repository = strapi.plugin('smoothbundle').service('api-accelerator-repository');
     const targets = [];
 
     for (const route of routes) {
@@ -1729,7 +1729,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async optimizeAsset(assetId = '', moduleId = '', options = {}) {
-    const settingsService = strapi.plugin('smoothcdn').service('core-settings');
+    const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
     const normalizedAssetId = String(assetId || '').trim();
@@ -1779,7 +1779,7 @@ module.exports = ({ strapi }) => ({
     const customSubdomain = normalizeCustomSubdomain(settings.customSubdomain);
 
     if (customSubdomain) {
-      return `https://${customSubdomain}.smoothcdn.com${normalizedPath}/${encodeURIComponent(filename)}`;
+      return `https://${customSubdomain}.smoothbundle.com${normalizedPath}/${encodeURIComponent(filename)}`;
     }
 
     if (!settings.userSlug || !settings.projectSlug) {
