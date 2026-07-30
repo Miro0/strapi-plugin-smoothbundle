@@ -1,0 +1,54 @@
+{
+  "name": "strapi-plugin-smoothbundle",
+  "version": "2.0.0",
+  "description": "Boost Strapi performance by connecting media and API assets to Smooth Bundle with built-in optimization and scalable delivery pipelines.",
+  "keywords": [
+    "strapi",
+    "strapi-plugin",
+    "cdn",
+    "assets",
+    "media",
+    "smoothbundle"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Miro0/strapi-plugin-smoothcdn"
+  },
+  "homepage": "https://smoothbundle.com",
+  "main": "strapi-server.js",
+  "exports": {
+    ".": "./strapi-server.js",
+    "./strapi-server": "./strapi-server.js",
+    "./strapi-admin": "./strapi-admin.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "admin",
+    "server",
+    "strapi-admin.js",
+    "strapi-server.js",
+    "README.md"
+  ],
+  "scripts": {
+    "check:server": "node --check strapi-server.js && find server -name '*.js' -print0 | xargs -0 -n1 node --check"
+  },
+  "peerDependencies": {
+    "@strapi/strapi": "^5.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "strapi": {
+    "kind": "plugin",
+    "name": "smoothbundle",
+    "displayName": "Smooth Bundle",
+    "description": "Core Smooth Bundle connection plus modular acceleration features for Strapi."
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=6.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
