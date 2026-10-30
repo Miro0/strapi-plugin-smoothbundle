@@ -215,10 +215,19 @@ module.exports = ({ strapi }) => {
         return this.get();
       }
 
-      const state = await this.update((current) => ({
-        pendingSyncFileIds: Array.from(new Set([...(current.pendingSyncFileIds || []), ...normalizedIds])),
-        pendingSyncFlushAfter: Date.now() + normalizedDelay,
-      }));
+      const state = await this.update((current) => {
+        const pendingDeleteIds = new Set(current.pendingDeleteFileIds || []);
+        const syncableIds = normalizedIds.filter((fileId) => !pendingDeleteIds.has(fileId));
+
+        if (syncableIds.length === 0) {
+          return current;
+        }
+
+        return {
+          pendingSyncFileIds: Array.from(new Set([...(current.pendingSyncFileIds || []), ...syncableIds])),
+          pendingSyncFlushAfter: Date.now() + normalizedDelay,
+        };
+      });
 
       this.scheduleSoon(normalizedDelay);
       return state;

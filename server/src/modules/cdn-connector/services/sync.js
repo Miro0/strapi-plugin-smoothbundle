@@ -1,6 +1,7 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
+const { downloadBody, cleanupBody } = require('../../../utils/streaming-upload');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -653,6 +654,9 @@ module.exports = ({ strapi }) => {
       };
     });
 
+    if (patch.status === 'failed') {
+      strapi.log.error(`[smoothbundle] Media sync ${jobId} failed: ${patch.errorMessage || 'Unknown error.'}`);
+    }
     return state.syncJob || null;
   }
 
@@ -886,11 +890,11 @@ module.exports = ({ strapi }) => {
         };
       }
 
-      const arrayBuffer = await response.arrayBuffer();
+      const body = await downloadBody(response);
 
       return {
         success: true,
-        body: Buffer.from(arrayBuffer),
+        body,
         contentType: String(response.headers.get('content-type') || '').trim(),
       };
     } catch (error) {
@@ -1056,6 +1060,8 @@ module.exports = ({ strapi }) => {
     );
     const filterSet = normalizedIds.length > 0 ? new Set(normalizedIds) : null;
     const sourceItems = await listSourceMediaItems(filterSet);
+    const sourceItemIds = new Set(sourceItems.map((item) => item.fileId).filter(Boolean));
+    const missingSelectedIds = normalizedIds.filter((fileId) => !sourceItemIds.has(fileId));
     const storedEntries = await repository.all();
     const persistedById = new Map(storedEntries.map((entry) => [entry.fileId, entry]));
     const storedById = new Map(storedEntries.map((entry) => [entry.fileId, entry]));
@@ -1065,10 +1071,12 @@ module.exports = ({ strapi }) => {
 
     if (normalizedIds.length === 0) {
       await reconcileRemovedItems(sourceItems);
+    } else if (missingSelectedIds.length > 0) {
+      await plugin(strapi).service('cdn-connector-optimize-queue').clearPendingSync(missingSelectedIds);
     }
 
     if (markSyncable) {
-      const targetIds = normalizedIds.length > 0 ? normalizedIds : sourceItems.map((item) => item.fileId).filter(Boolean);
+      const targetIds = sourceItems.map((item) => item.fileId).filter(Boolean);
 
       if (targetIds.length > 0) {
         await repository.upsertMany(
@@ -1117,7 +1125,7 @@ module.exports = ({ strapi }) => {
     const cdnAssetsByKey = buildCdnAssetsByKey(cdnAssets);
     const localOriginalAssetsByKey = buildLocalOriginalAssetIndex(sourceItems, settings);
     const uploadCandidates = [];
-    let plannedSkipped = 0;
+    let plannedSkipped = missingSelectedIds.length;
 
     for (const item of sourceCandidates) {
       const syncPlan = buildSyncPlan(item, settings);
@@ -1127,12 +1135,12 @@ module.exports = ({ strapi }) => {
       const localUpdatedAt = normalizeTimestamp(item.updatedAt || item.createdAt);
       const cdnUpdatedAt = matchingCdnAsset ? getCdnAssetTimestamp(matchingCdnAsset) : 0;
 
-      if (matchingCdnAsset && cdnUpdatedAt > lastSyncTimestamp) {
+      if (!options.force && matchingCdnAsset && cdnUpdatedAt > lastSyncTimestamp) {
         plannedSkipped += 1;
         continue;
       }
 
-      if (matchingCdnAsset && localUpdatedAt <= lastSyncTimestamp) {
+      if (!options.force && matchingCdnAsset && localUpdatedAt <= lastSyncTimestamp) {
         plannedSkipped += 1;
         continue;
       }
@@ -1143,11 +1151,13 @@ module.exports = ({ strapi }) => {
       });
     }
 
-    const downloadCandidates = cdnAssets.filter((asset) => {
-      const key = getCdnAssetKey(asset);
+    const downloadCandidates = normalizedIds.length > 0
+      ? []
+      : cdnAssets.filter((asset) => {
+        const key = getCdnAssetKey(asset);
 
-      return key && !localOriginalAssetsByKey.has(key) && getCdnAssetTimestamp(asset) > lastSyncTimestamp;
-    });
+        return key && !localOriginalAssetsByKey.has(key) && getCdnAssetTimestamp(asset) > lastSyncTimestamp;
+      });
 
     await updateSyncJob(jobId, {
       totalItems: uploadCandidates.length + downloadCandidates.length + plannedSkipped,
@@ -1195,6 +1205,7 @@ module.exports = ({ strapi }) => {
     const pendingBatch = [];
 
     const markFailedItem = async (item, failureMessage) => {
+      strapi.log.error(`[smoothbundle] Media ${item.fileId} (${item.name || 'unnamed'}) upload failed: ${failureMessage}`);
       failed += 1;
       failures.push({
         fileId: item.fileId,
@@ -1360,6 +1371,7 @@ module.exports = ({ strapi }) => {
         : { results: {} };
       await refreshActiveSyncLock(options);
       const upload = {
+        message: originalUpload?.message || variantUpload?.message || '',
         results: {
           ...(originalUpload?.results || {}),
           ...(variantUpload?.results || {}),
@@ -1433,9 +1445,6 @@ module.exports = ({ strapi }) => {
       const uploadAssets = [];
       let failureMessage = '';
 
-      if (isPaidPlanArchiveAsset(item.name, item.ext) && !hasPaidPlan) {
-        failureMessage = 'Archive uploads require a paid Smooth Bundle plan.';
-      }
 
       for (const plannedEntry of failureMessage ? [] : syncPlan) {
         if (!plannedEntry.sourceUrl) {
@@ -1531,6 +1540,7 @@ module.exports = ({ strapi }) => {
       }
 
       if (failureMessage) {
+        for (const asset of uploadAssets) await cleanupBody(asset.body);
         if (shouldSkipExpectedOffloadedMissingSource({
           current,
           persistedCurrent,
@@ -2260,9 +2270,7 @@ module.exports = ({ strapi }) => {
       });
       activeSyncPromise = jobPromise;
 
-      setImmediate(() => {
-        jobPromise.catch(() => null);
-      });
+      void jobPromise.catch(() => null);
 
       return {
         success: true,
@@ -2390,9 +2398,7 @@ module.exports = ({ strapi }) => {
       });
       activeSyncPromise = jobPromise;
 
-      setImmediate(() => {
-        jobPromise.catch(() => null);
-      });
+      void jobPromise.catch(() => null);
 
       return {
         success: true,

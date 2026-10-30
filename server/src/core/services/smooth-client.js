@@ -1,6 +1,8 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs/promises');
+const { THRESHOLD, cleanupBody, uploadMultipart, uploadErrorMessage } = require('../../utils/streaming-upload');
 
 const {
   CDN_API_BASE_URL,
@@ -1649,6 +1651,7 @@ module.exports = ({ strapi }) => ({
   },
 
   async uploadAssets(assets = [], moduleId = '', options = {}) {
+    try {
     const settingsService = strapi.plugin('smoothbundle').service('core-settings');
     const settings = await settingsService.get();
     const project = await settingsService.getProject(moduleId);
@@ -1700,8 +1703,34 @@ module.exports = ({ strapi }) => ({
     const results = {};
 
     for (const group of groups.values()) {
+      const smallAssets = [];
+      for (const asset of group) {
+        const size = asset.body?.filePath ? asset.body.size : Buffer.byteLength(asset.body);
+        if (size < THRESHOLD) {
+          smallAssets.push(asset);
+          continue;
+        }
+        try {
+          const payload = await uploadMultipart(CDN_API_BASE_URL.replace(/\/$/, ''), settings.accessToken, project.projectId, asset);
+          if (!payload.asset?.id) throw new Error('Smooth Bundle did not confirm the uploaded asset.');
+          results[asset.route] = { success: true, assetId: String(payload.asset.id), responsePayload: payload, path: asset.path, filename: asset.filename };
+        } catch (error) {
+          results[asset.route] = { success: false, message: error.message, path: asset.path, filename: asset.filename };
+        } finally {
+          await cleanupBody(asset.body);
+        }
+      }
+      group.splice(0, group.length, ...smallAssets);
       for (let startIndex = 0; startIndex < group.length; startIndex += batchSize) {
-        const chunk = group.slice(startIndex, startIndex + batchSize);
+        const chunk = [];
+        let chunkBytes = 0;
+        for (const asset of group.slice(startIndex, startIndex + batchSize)) {
+          const size = asset.body?.filePath ? asset.body.size : Buffer.byteLength(asset.body);
+          if (chunk.length && chunkBytes + size > 90 * 1024 * 1024) break;
+          chunk.push(asset);
+          chunkBytes += size;
+        }
+        startIndex += chunk.length - batchSize;
         const sample = chunk[0];
         const form = new FormData();
         form.set('projectId', project.projectId);
@@ -1713,7 +1742,7 @@ module.exports = ({ strapi }) => ({
         for (const asset of chunk) {
           form.append(
             'assets',
-            new Blob([asset.body], { type: asset.contentType || 'application/octet-stream' }),
+            new Blob([asset.body?.filePath ? await fs.readFile(asset.body.filePath) : asset.body], { type: asset.contentType || 'application/octet-stream' }),
             asset.filename
           );
           if (asset.parentAssetId) {
@@ -1745,6 +1774,7 @@ module.exports = ({ strapi }) => ({
           };
         }
 
+        for (const asset of chunk) await cleanupBody(asset.body);
         const uploadedEntries = extractUploadedAssetEntries(payload);
         const usedIndexes = new Set();
 
@@ -1764,12 +1794,10 @@ module.exports = ({ strapi }) => ({
           }
 
           results[asset.route] = {
-            success: matchedEntry?.success ?? response.ok,
+            success: Boolean(response.ok && matchedEntry?.assetId && matchedEntry?.success !== false),
             message:
               String(matchedEntry?.message || '').trim() ||
-              payload?.message ||
-              payload?.error?.message ||
-              '',
+              uploadErrorMessage(payload, response.status, 'Smooth Bundle did not confirm the uploaded asset.'),
             details: payload?.details || '',
             assetId: String(matchedEntry?.assetId || '').trim(),
             responsePayload: payload,
@@ -1785,6 +1813,9 @@ module.exports = ({ strapi }) => ({
       results,
       message: Object.values(results).find((result) => !result.success)?.message || '',
     };
+    } finally {
+      await Promise.all((Array.isArray(assets) ? assets : []).map(asset => cleanupBody(asset?.body)));
+    }
   },
 
   async deleteAssets(targets = [], moduleId = '') {

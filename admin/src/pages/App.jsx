@@ -3167,7 +3167,7 @@ export default function App() {
               text:
                 nextJob.failedItems > 0 || nextJob.status === 'failed'
                   ? `${nextJob.errorMessage || `Sync finished with ${nextJob.failedItems} failed media item${nextJob.failedItems === 1 ? '' : 's'}.`}${failedDebugText}`
-                  : `Sync finished. ${nextJob.syncedItems} media item${nextJob.syncedItems === 1 ? '' : 's'} uploaded.`,
+                  : `Sync finished. ${nextJob.syncedItems} uploaded, ${nextJob.skippedItems} skipped.`,
             });
           }
         }
@@ -3193,14 +3193,13 @@ export default function App() {
     stopCdnSyncPolling();
 
     const tick = async () => {
-      const result = await pollCdnSyncStatus(true).catch(() => null);
+      const result = await pollCdnSyncStatus(false).catch(() => null);
 
       if (result?.status === 'running') {
         cdnSyncPollingTimerRef.current = window.setTimeout(tick, 1000);
         return;
       }
 
-      await pollCdnSyncStatus(false).catch(() => null);
     };
 
     tick();
@@ -5496,6 +5495,15 @@ export default function App() {
                   </ProgressTrack>
                 </Flex>
               </Box>
+            ) : null}
+
+            {activeModule?.id === 'cdn-connector' && cdnConnectorSyncJob.status === 'failed' ? (
+              <StyledAlert title="Media sync failed" variant="danger">
+                {cdnConnectorSyncJob.errorMessage || 'Media sync could not be completed.'}
+                {cdnConnectorSyncJob.failedEntries.map((entry) => (
+                  <div key={entry.fileId}>{entry.fileId}: {entry.message}</div>
+                ))}
+              </StyledAlert>
             ) : null}
 
             {renderActiveView()}

@@ -292,7 +292,6 @@ module.exports = ({ strapi }) => ({
 
     ctx.body = {
       data: {
-        entries,
         result,
         job: result.job || null,
         mediaItems: await plugin(strapi).service('cdn-connector-sync').listMediaItems(),
