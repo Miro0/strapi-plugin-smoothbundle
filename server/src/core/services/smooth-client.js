@@ -1793,11 +1793,13 @@ module.exports = ({ strapi }) => ({
             usedIndexes.add(matchedIndex);
           }
 
+          const succeeded = Boolean(response.ok && matchedEntry?.assetId && matchedEntry?.success !== false);
           results[asset.route] = {
-            success: Boolean(response.ok && matchedEntry?.assetId && matchedEntry?.success !== false),
-            message:
+            success: succeeded,
+            message: succeeded ? '' : (
               String(matchedEntry?.message || '').trim() ||
-              uploadErrorMessage(payload, response.status, 'Smooth Bundle did not confirm the uploaded asset.'),
+              uploadErrorMessage(payload, response.status, 'Smooth Bundle did not confirm the uploaded asset.')
+            ),
             details: payload?.details || '',
             assetId: String(matchedEntry?.assetId || '').trim(),
             responsePayload: payload,
